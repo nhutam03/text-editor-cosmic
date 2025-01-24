@@ -4,11 +4,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text Editor</title>
+    <title>Cosmic</title>
     <link rel="stylesheet" href="index.css">
 </head>
 
-<body>
+<body style="display: flex; flex-direction: row; align-items: center;">
+    <div>
+        <div>
+            <input type="text" id="search" placeholder="Search...">
+        </div>
+        <div>
+            <div>Home</div>
+            <div>Tasks</div>
+            <div>Users</div>
+            <div>Plugins</div>
+            <div>Settings</div>
+        </div>
+        <div>
+            <div>Profile</div>
+            <div>Logout</div>
+        </div>
+    </div>
     <textarea id="editor" rows="20" cols="80"></textarea>
     <button id="spellCheck">Check Spelling</button>
     <div id="result"></div>
