@@ -1,6 +1,10 @@
 {
   "name": "frontend",
   "version": "1.0.0",
+  "bin": {
+    "tailwindcss": "./node_modules/tailwindcss/lib/cli.js"
+  },
+  "description": "",
   "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -8,16 +12,13 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "description": "",
   "devDependencies": {
-    "electron": "^33.3.1",
-    "electron-packager": "^17.1.2"
+    "autoprefixer": "^10.4.20",
+    "electron": "^34.0.1",
+    "postcss": "^8.5.1",
+    "tailwindcss-cli": "^0.1.2"
   },
   "dependencies": {
-    "autoprefixer": "^10.4.20",
-    "daisyui": "^4.12.23",
-    "postcss": "^8.5.1",
-    "tailwindcss": "^4.0.0"
+    "daisyui": "^4.12.23"
   }
 }
