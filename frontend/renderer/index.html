@@ -6,65 +6,57 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cosmic</title>
     <link rel="stylesheet" href="index.css">
-    
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <script src="index.js"></script>
 </head>
 
-<body data-theme="light">
-    <div>
-        <div>
-            <input type="text" id="search" placeholder="Search...">
+<body data-theme="light" class="bg-gray-100 text-gray-900 h-screen flex flex-row gap-5 overflow-hidden transition-colors duration-300">
+    <aside class="bg-white border-r border-gray-200 flex-grow w-2/6 p-6 overflow-hidden">
+        <ul class="menu p-4 w-full">
+            <li class="hover:bg-gray-100 rounded"><a>Home</a></li>
+            <li class="hover:bg-gray-100 rounded"><a>Tasks</a></li>
+            <li class="hover:bg-gray-100 rounded"><a>Plugins</a></li>
+            <li class="hover:bg-gray-100 rounded"><a>Settings</a></li>
+            <li class="hover:bg-gray-100 rounded"><a>Help & Support</a></li>
+        </ul>
+        <div class="self-end">
+            <div>Account</div>
         </div>
-        <div>
-            <div>Home</div>
-            <div>Tasks</div>
-            <div>Users</div>
-            <div>Plugins</div>
-            <div>Settings</div>
-        </div>
-        <div>
-            <div>Profile</div>
-            <div>Logout</div>
-        </div>
-    </div>
-    <textarea id="editor" rows="20" cols="80"></textarea>
-    <button id="spellCheck">Check Spelling</button>
-    <div id="result"></div>
-    <div class="drawer">
-        <input id="my-drawer-3" type="checkbox" class="drawer-toggle" />
-        <div class="drawer-content flex flex-col">
-            <!-- Navbar -->
-            <div class="navbar bg-base-300 w-full">
-                <div class="flex-none lg:hidden">
-                    <label for="my-drawer-3" aria-label="open sidebar" class="btn btn-square btn-ghost">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                            class="inline-block h-6 w-6 stroke-current">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M4 6h16M4 12h16M4 18h16"></path>
-                        </svg>
-                    </label>
-                </div>
-                <div class="mx-2 flex-1 px-2">Navbar Title</div>
-                <div class="hidden flex-none lg:block">
-                    <ul class="menu menu-horizontal">
-                        <!-- Navbar menu content here -->
-                        <li><a>Navbar Item 1</a></li>
-                        <li><a>Navbar Item 2</a></li>
-                    </ul>
-                </div>
+    </aside>
+    <main class="p-8 bg-white flex-grow overflow-hidden w-4/6">
+        <div class="flex flex-row justify-between items-center mb-6">
+            <div class="flex flex-col">
+                <h1 class="text-2xl font-bold mb-1">The Legend of X</h1>
+                <p class="text-gray-500 text-sm">Last Updated July 23, 2224 - By Azunyan Sempai</p>
             </div>
-            <!-- Page content here -->
-            Content
+            <div class="flex flex-row">
+                <button class="btn btn-sm btn-primary mr-2">Preview</button>
+                <button class="btn btn-sm">Save & Close</button>
+            </div>
         </div>
-        <div class="drawer-side">
-            <label for="my-drawer-3" aria-label="close sidebar" class="drawer-overlay"></label>
-            <ul class="menu bg-base-200 min-h-full w-80 p-4">
-                <!-- Sidebar content here -->
-                <li><a>Sidebar Item 1</a></li>
-                <li><a>Sidebar Item 2</a></li>
-            </ul>
+        <div class="flex-grow prose max-w-none m-0 p-0">
+            <div class="textarea border border-gray-300 rounded-lg p-2 w-full h-screen resize-none overflow-auto font-mono whitespace-pre-wrap focus:outline-none focus:ring-2 focus:ring-blue-500"
+                contenteditable style="tab-size: 4;">
+                nhutwm ne
+            </div>
         </div>
-    </div>
-
+        
+    </main>
+    <aside class="bg-white border-l border-gray-200 p-6 overflow-hidden w-2/6">
+        <div class="bg-white rounded-lg shadow-md p-6 mt-8">
+            <h2 class="text-lg font-medium mb-4">Edit Block</h2>
+            <div class="form-control w-full">
+                <label class="label">
+                    <span class="label-text">Block Type</span>
+                </label>
+                <select class="select select-bordered w-full">
+                    <option disabled selected>Text</option>
+                    <option>Plugin</option>
+                </select>
+            </div>
+        </div>
+        <button id="theme-toggle" class="btn btn-sm">Đổi Theme</button>
+    </aside>    
     <script src="index.js"></script>
 </body>
 
