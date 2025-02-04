@@ -13,6 +13,11 @@
 //     const text = document.getElementById('editor').value;
 //     checkSpelling(text);
 // });
+// lucide.createIcons();
+document.addEventListener("DOMContentLoaded", function () {
+    lucide.createIcons();
+});
+
 const axios = require('axios');
 
 
