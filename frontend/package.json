@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "daisyui": "^4.12.23",
+    "frontend": "file:",
     "monaco-editor": "^0.52.2",
     "path-browserify": "^1.0.1",
     "requirejs": "^2.3.7"
