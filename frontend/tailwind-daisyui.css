@@ -1,7 +1,0 @@
-/* Tích hợp Tailwind CSS và DaisyUI thông qua CDN */
-
-/* Tailwind CSS */
-@import url('https://cdn.tailwindcss.com');
-
-/* DaisyUI */
-@import url('https://cdn.jsdelivr.net/npm/daisyui@4.12.23/dist/full.css');

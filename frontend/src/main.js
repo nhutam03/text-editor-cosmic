@@ -20,16 +20,21 @@
 //     if (mainWindow === null) createWindow()
 // })
 const { app, BrowserWindow } = require('electron');
+const path = require('path');
 let mainWindow;
 
 app.on('ready', () => {
     mainWindow = new BrowserWindow({
+        
         width: 800,
         height: 600,
+        resizable: true,
+        icon: path.join(__dirname, 'public/logo.ico'),
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,
+            webSecurity: false,
         },
     });
-    mainWindow.loadFile('renderer/index.html');
+    mainWindow.loadFile('src/index.html');
 });

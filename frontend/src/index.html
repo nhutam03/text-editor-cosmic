@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic</title>
+    <!-- <link rel="stylesheet" href="styles.css"> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.min.js"></script>-->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="index.js"></script>
+</head>
+
+<body class="bg-gray-900 text-white flex h-screen">
+    
+        <!-- Sidebar (Thanh bên trái)
+        <div class="w-[45px] bg-[#272B2F] p-2 flex flex-col">
+            <div class="mb-4">
+                <h2 class="text-lg font-bold"></h2>
+            </div>
+            <nav class="space-y-2">
+                <button class="w-full text-left p-2 hover:bg-gray-700 rounded flex items-center">
+                    <a>
+                        <i data-lucide="home" class="mr-2 text-white"></i>
+                    </a>
+                </button>
+                <button class="w-full text-left p-2 hover:bg-gray-700 rounded flex items-center">
+                    <a>
+                        <i data-lucide="list-checks" class="mr-2 text-white"></i>
+                    </a>
+                </button>
+                <button class="w-full text-left p-2 hover:bg-gray-700 rounded flex items-center">
+                    <a>
+                        <i data-lucide="package" class="mr-2 text-white"></i>
+                    </a>
+                    
+                </button>
+            </nav>
+        </div>
+    
+        <div class="flex flex-col bg-[#191B1C] w-[300px]">
+            <div class="bg-gray-700 p-2 border-b border-gray-600">
+                <input type="text" placeholder="Search..." class="bg-gray-800 text-white p-2 rounded-[15px]">
+            </div>
+            <div class="flex-1 overflow-auto p-2">
+                <div id="fileExplorer" class="space-y-2">
+                    <div class="flex items-center">
+                        <span>NO FOLDER OPENED</span>
+                    </div>
+                </div>
+            </div>
+        </div> -->
+    
+        <!-- Sidebar (Thanh bên trái) -->
+        <div class="w-[45px] bg-[#272B2F] p-2 flex flex-col transition-all duration-300" id="sidebar">
+            <div class="mb-4">
+                <h2 class="text-lg font-bold"></h2>
+            </div>
+            <nav class="space-y-2">
+                <button class="w-full text-left p-2 hover:bg-gray-700 rounded flex items-center" data-tab="home">
+                    <a>
+                        <i data-lucide="home" class="mr-2 text-white cursor-pointer"></i>
+                    </a>
+                </button>
+                <button class="w-full text-left p-2 hover:bg-gray-700 rounded flex items-center" data-tab="list">
+                    <a>
+                        <i data-lucide="list-checks" class="mr-2 text-white cursor-pointer"></i>
+                    </a>
+                </button>
+                <button class="w-full text-left p-2 hover:bg-gray-700 rounded flex items-center" data-tab="package">
+                    <a>
+                        <i data-lucide="package" class="mr-2 text-white cursor-pointer"></i>
+                    </a>
+                </button>
+            </nav>
+        </div>
+        
+        <!-- Khu vực nội dung (File Explorer và các tab khác) -->
+        <div class="flex flex-col bg-[#191B1C] w-[300px] transition-all duration-300" id="contentArea">
+            <div class="bg-gray-700 p-2 border-b border-gray-600">
+                <input type="text" placeholder="Search..." class="bg-gray-800 text-white p-2 rounded-[15px] w-full">
+            </div>
+            <div class="flex-1 overflow-auto p-2">
+                <!-- Nội dung của tab, ví dụ: File Explorer -->
+                <div id="fileExplorer" class="space-y-2">
+                    <div class="flex items-center">
+                        <span>NO FOLDER OPENED</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Phần tử resizer để kéo điều chỉnh độ rộng -->
+        <div class="w-1 bg-gray-500 cursor-col-resize" id="resizer"></div>
+        <!-- Khu vực soạn thảo (Monaco Editor) -->
+        <div class="flex-1 bg-gray-900 border border-red-300">
+            <div id="editor" class="w-full h-full"></div>
+        </div>
+        <script src="../dist/bundle.js"></script>
+        <script src="index.js"></script>
+</body>
+
+</html>
