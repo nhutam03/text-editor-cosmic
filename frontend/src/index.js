@@ -82,6 +82,7 @@ import * as monaco from 'monaco-editor';
 
 let editor = null;
 let isContentCollapsed = false;
+let isResizing = false; // Trạng thái đang kéo resizer
 
 // Khởi tạo Monaco Editor
 document.addEventListener('DOMContentLoaded', () => {
@@ -93,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
         lineNumbers: 'on',
         scrollBeyondLastLine: false,
         readOnly: false,
+        
         
     });
 
@@ -115,13 +117,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isContentCollapsed) {
                 // Thu gọn contentArea về 0px
                 contentArea.style.width = '0px';
-                contentArea.style.padding = '0'; // Loại bỏ padding khi thu gọn
-                contentArea.style.overflow = 'hidden'; // Ẩn nội dung khi thu gọn
+                contentArea.style.padding = '0';
+                contentArea.style.overflow = 'hidden';
             } else {
-                // Mở rộng contentArea về 300px (hoặc giá trị mặc định)
-                contentArea.style.width = '300px';
-                contentArea.style.padding = '2'; // Khôi phục padding
-                contentArea.style.overflow = 'auto'; // Khôi phục hiển thị nội dung
+                // Mở rộng contentArea về 300px (hoặc giá trị hiện tại nếu đã kéo)
+                contentArea.style.width = contentArea.dataset.defaultWidth || '300px';
+                contentArea.style.padding = '2';
+                contentArea.style.overflow = 'auto';
             }
 
             // Cập nhật kích thước của Monaco Editor sau khi thay đổi
@@ -131,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Xử lý kéo resizer để điều chỉnh độ rộng của contentArea
     const resizer = document.getElementById('resizer');
     const minWidth = 45; // Độ rộng tối thiểu (tương ứng với sidebar)
 
