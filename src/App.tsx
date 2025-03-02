@@ -39,7 +39,7 @@ const customSystem = createSystem(defaultConfig, customConfig);
 const App: React.FC = () => {
   const [contentWidth, setContentWidth] = useState(300); // Độ rộng của ContentArea
   const [activeTab, setActiveTab] = useState('explorer');
-  // const [stats, setStats] = useState({ words: 0, chars: 0, lines: 0 });
+  const [isContentCollapsed, setIsContentCollapsed] = useState(false); // Trạng thái thu gọn/mở rộng
   const [stats, setStats] = useState({
     line: 1,
     column: 1,
@@ -49,6 +49,7 @@ const App: React.FC = () => {
   });
 
   const resizerRef = useRef<HTMLDivElement>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const handleContentChange = (newStats: Partial<typeof stats>) => {
     setStats((prev) => ({ ...prev, ...newStats }));
@@ -66,15 +67,31 @@ const App: React.FC = () => {
     console.log('Changing theme...');
   };
 
+  // Xử lý nhấn tab trên sidebar
+  const handleTabClick = (tab: string) => {
+    if (tab === activeTab) {
+      const newCollapsedState = !isContentCollapsed;
+      setIsContentCollapsed(newCollapsedState);
+      setContentWidth(newCollapsedState ? 0 : 300);
+    } else {
+      setActiveTab(tab);
+      setIsContentCollapsed(false);
+      setContentWidth(300);
+    }
+  };
+
   useEffect(() => {
     const resizer = resizerRef.current;
     if (resizer) {
       const handleMouseDown = (e: MouseEvent) => {
         const startX = e.pageX;
+        const startWidth = contentWidth;
+        
         const handleMouseMove = (moveEvent: MouseEvent) => {
-          const newWidth = contentWidth + (moveEvent.pageX - startX);
-          if (newWidth >= 150 && newWidth <= 500) {
+          let newWidth = startWidth + (moveEvent.pageX - startX);
+          if (newWidth >= 0 && newWidth <= 300) {
             setContentWidth(newWidth);
+            setIsContentCollapsed(newWidth === 0);
           }
         };
         const handleMouseUp = () => {
@@ -90,12 +107,19 @@ const App: React.FC = () => {
     }
   }, [contentWidth]);
 
+  useEffect(() => {
+    if (editorContainerRef.current) {
+      editorContainerRef.current.style.width = `calc(100% - ${contentWidth}px - 4px)`;
+    }
+  }, [contentWidth]);
+
+
   return (
     <ChakraProvider value={customSystem}>
 
       <Flex h="100vh" bg="gray.900" color="white">
         {/* Sidebar */}
-        <Sidebar setActiveTab={setActiveTab} />
+        <Sidebar setActiveTab={setActiveTab} activeTab={activeTab} onTabClick={handleTabClick} />
 
         <Flex flex={1} flexDir="row">
           <ContentArea width={contentWidth} activeTab={activeTab} />
@@ -110,12 +134,12 @@ const App: React.FC = () => {
           />
 
           {/* Editor Area (Toolbar + Open Files + Editor + Status Bar) */}
-          <Flex flex={1} flexDir="column">
+          <Flex ref={editorContainerRef} flexDir="column" minW={0} overflow="hidden">
             <Toolbar
               onSpellCheck={handleSpellCheck}
               onThemeChange={handleThemeChange}
             />
-            <Editor onContentChange={handleContentChange}/>
+            <Editor onContentChange={handleContentChange} />
             <StatusBar stats={stats} />
           </Flex>
         </Flex>

@@ -1,21 +1,22 @@
 import { VStack, Box, Button, 
 } from '@chakra-ui/react';
 import React, { forwardRef } from 'react';
-import { Home, 
-    // ListCheck, 
-    ListChecks, Package } from 'lucide-react';
-//import { recentFiles } from '../plugins/recentFiles';
+import { Home, ListChecks, Package } from 'lucide-react';
+
 
 interface SidebarProps {
-    // activeTab: string;
+    activeTab: string;
     setActiveTab: (tab: string) => void;
-    // onTabClick: (tab: string) => void;
+    onTabClick: (tab: string) => void;
 }
 
 
-const Sidebar: React.FC<SidebarProps> = ({ setActiveTab }) => {
+// const Sidebar: React.FC<SidebarProps> = ({ setActiveTab }) => {
+const Sidebar = forwardRef<HTMLDivElement, SidebarProps>((props, ref) => {
+    const { activeTab, onTabClick } = props;
     return (
         <Box
+            ref={ref}
             w="45px"
             bg="#272B2F"
             display="flex"
@@ -31,7 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ setActiveTab }) => {
                     justifyContent="center"
                     _hover={{ bg: 'gray.700' }}
                     rounded="md"
-                    onClick={() => setActiveTab('explorer')}
+                    onClick={() => onTabClick('explorer')}
                 >
                     <Home size={20} />
                 </Button>
@@ -42,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({ setActiveTab }) => {
                     justifyContent="center"
                     _hover={{ bg: 'gray.700' }}
                     rounded="md"
-                    onClick={() => setActiveTab('search')}
+                    onClick={() => onTabClick('search')}
                 >
                     <ListChecks size={20} />
                 </Button>
@@ -53,13 +54,13 @@ const Sidebar: React.FC<SidebarProps> = ({ setActiveTab }) => {
                     justifyContent="center"
                     _hover={{ bg: 'gray.700' }}
                     rounded="md"
-                    onClick={() => setActiveTab('extensions')}
+                    onClick={() => onTabClick('extensions')}
                 >
                     <Package size={20} />
                 </Button>
             </VStack>
         </Box>
     );
-};
+});
 
 export default Sidebar;
