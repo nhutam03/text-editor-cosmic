@@ -1,0 +1,67 @@
+{
+  "name": "text-editor-app",
+  "private": true,
+  "version": "0.0.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "cross-env ELECTRON=true vite build",
+    "build-electron": "tsc --project tsconfig.electron.json && copy preload.js dist\\preload.js",
+    "electron": "npm run build-electron && electron .",
+    "electron-dev": "cross-env ELECTRON=true concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run electron\"",
+    "dist": "npm run build && npm run build-electron && electron-builder"
+  },
+  "build": {
+    "appId": "com.texteditor.app",
+    "productName": "TextEditor",
+    "files": [
+      "dist/**/*"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^3.8.1",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@monaco-editor/react": "^4.7.0",
+    "autoprefixer": "^10.4.20",
+    "dictionary-en": "^4.0.0",
+    "framer-motion": "^12.4.7",
+    "lucide-react": "^0.477.0",
+    "monaco-editor": "^0.52.2",
+    "next-themes": "^0.4.4",
+    "nspell": "^2.1.5",
+    "postcss": "^8.5.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-icons": "^5.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@types/nspell": "^2.1.6",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.3.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.21.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^15.15.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.7.2",
+    "typescript-eslint": "^8.24.1",
+    "vite": "^6.2.0",
+    "wait-on": "^8.0.2"
+  }
+}
