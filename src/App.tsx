@@ -5,7 +5,6 @@ import Toolbar from './components/Toolbar';
 import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
 import ContentArea from './components/ContentArea';
-// import { recentFiles } from './plugins/recentFiles';
 
 // Định nghĩa theme tùy chỉnh với createSystem
 const customConfig = {
@@ -55,9 +54,14 @@ const App: React.FC = () => {
     setStats((prev) => ({ ...prev, ...newStats }));
   };
 
-  // const handleSave = () => {
-  //   console.log('Saving file...');
-  // };
+  const handleFileSelect = (filePath: string) => {
+    // Trigger file loading in Editor
+    loadFileContent(filePath);
+    console.log('File selected:', filePath);
+  };
+  const loadFileContent = (fileName: string) => {
+    window.electron.ipcRenderer.send('open-file-request', fileName);
+  };
 
   const handleSpellCheck = () => {
     console.log('Toggling spell-check...');
@@ -122,7 +126,7 @@ const App: React.FC = () => {
         <Sidebar setActiveTab={setActiveTab} activeTab={activeTab} onTabClick={handleTabClick} />
 
         <Flex flex={1} flexDir="row">
-          <ContentArea width={contentWidth} activeTab={activeTab} />
+          <ContentArea width={contentWidth} activeTab={activeTab} onFileSelect={handleFileSelect} />
 
           {/* Resizer (thay thế Divider) */}
           <Box
@@ -139,7 +143,7 @@ const App: React.FC = () => {
               onSpellCheck={handleSpellCheck}
               onThemeChange={handleThemeChange}
             />
-            <Editor onContentChange={handleContentChange} />
+            <Editor onContentChange={handleContentChange} loadFileContent={loadFileContent} />
             <StatusBar stats={stats} />
           </Flex>
         </Flex>

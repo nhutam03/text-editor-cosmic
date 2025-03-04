@@ -8,6 +8,9 @@ export default defineConfig(({ command, mode }) => {
   return {
     build: {
       outDir: 'dist',
+      rollupOptions: {
+       
+      },
       emptyOutDir: true,
       sourcemap: true, // Tùy chọn, giúp debug dễ hơn
     },

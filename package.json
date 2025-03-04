@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
+    "@types/electron": "^1.4.38",
     "@types/nspell": "^2.1.6",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
