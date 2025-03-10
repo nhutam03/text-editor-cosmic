@@ -1,7 +1,6 @@
-import { VStack, Box, Button, 
-} from '@chakra-ui/react';
 import React, { forwardRef } from 'react';
 import { Home, ListChecks, Package } from 'lucide-react';
+import { Button } from './ui/button';
 
 
 interface SidebarProps {
@@ -15,51 +14,34 @@ interface SidebarProps {
 const Sidebar = forwardRef<HTMLDivElement, SidebarProps>((props, ref) => {
     const { activeTab, onTabClick } = props;
     return (
-        <Box
+        <div
             ref={ref}
-            w="45px"
-            bg="#272B2F"
-            display="flex"
-            flexDir="column"
-            alignItems="center"
-            transition="all 0.3s"
+            className="w-[45px] bg-[#272B2F] flex flex-col items-center transition-all duration-300"
         >
-            <VStack gap={3} mt={2}>
+            <div className="flex flex-col gap-3 mt-2">
                 <Button
                     variant="ghost"
-                    p={2}
-                    w="full"
-                    justifyContent="center"
-                    _hover={{ bg: 'gray.700' }}
-                    rounded="md"
-                    onClick={() => onTabClick('explorer')}
+                    className="w-full p-2 justify-center hover:bg-gray-700 rounded-md"
+                    onClick={() => onTabClick("explorer")}
                 >
                     <Home size={20} />
                 </Button>
                 <Button
                     variant="ghost"
-                    p={2}
-                    w="full"
-                    justifyContent="center"
-                    _hover={{ bg: 'gray.700' }}
-                    rounded="md"
-                    onClick={() => onTabClick('search')}
+                    className="w-full p-2 justify-center hover:bg-gray-700 rounded-md"
+                    onClick={() => onTabClick("search")}
                 >
                     <ListChecks size={20} />
                 </Button>
                 <Button
                     variant="ghost"
-                    p={2}
-                    w="full"
-                    justifyContent="center"
-                    _hover={{ bg: 'gray.700' }}
-                    rounded="md"
-                    onClick={() => onTabClick('extensions')}
+                    className="w-full p-2 justify-center hover:bg-gray-700 rounded-md"
+                    onClick={() => onTabClick("extensions")}
                 >
                     <Package size={20} />
                 </Button>
-            </VStack>
-        </Box>
+            </div>
+        </div>
     );
 });
 

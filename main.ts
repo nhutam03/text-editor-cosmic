@@ -9,7 +9,7 @@ function createWindow() {
     const win = new BrowserWindow({
         width: 1200,
         height: 800,
-        icon: path.join(__dirname, './public/logo.ico'),
+        icon: path.join(__dirname, '../public/logo.ico'),
         webPreferences: {
             nodeIntegration: false, // Tắt nodeIntegration
             contextIsolation: true, // Bật contextIsolation cho bảo mật

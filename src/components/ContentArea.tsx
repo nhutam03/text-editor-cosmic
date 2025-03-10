@@ -1,51 +1,59 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Button, List, Text } from '@chakra-ui/react';
-//import { ipcRenderer } from 'electron';
 import { File, FolderOpenDot } from 'lucide-react';
 import { IpcRendererEvent } from 'electron';
+import { Button } from './ui/button';
 
 interface ContentAreaProps {
-    width: number;
+    //width: number;
     activeTab: string;
     onFileSelect: (filePath: string) => void;
 }
 
-const ContentArea: React.FC<ContentAreaProps> = ({ width, activeTab, onFileSelect }) => {
+const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) => {
     const [folderStructure, setFolderStructure] = useState<any>(null); // Store folder/file structure
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);  
     const renderContent = () => {
         switch (activeTab) {
             case 'explorer':
                 return (
-                    <Box p={2}>
-                        <Text>Explorer</Text>
-                        <Box mt={2}>
+                    <div className="flex flex-col items-start justify-between w-full">
+                        <span className="text-white">Explorer</span>
                             {selectedFolder ? (
-                                <List.Root>
+                                <ul className="space-y-1">
                                     {renderFolderOrFiles(folderStructure)}
-                                </List.Root>
+                                </ul>
                             ) : (
-                                <Text>NO FOLDER OPENED</Text>
+                                <div className="flex flex-row justify-between w-full">
+                                <span className="text-white">NO FOLDER OPENED</span>
+                                    <Button
+                                        className="bg-transparent hover:bg-gray-700 rounded-md"
+                                        onClick={openFolder}
+                                    >
+                                        <File size={5} />
+                                    </Button>
+                                </div>
                             )}
-                            <Button
-                                variant="ghost"
-                                p={2}
-                                w="full"
-                                justifyContent="center"
-                                _hover={{ bg: 'gray.700' }}
-                                rounded="md"
-                                onClick={openFolder}
-                                mt={2}
-                            >
-                             <File size={20} />
-                            </Button>
-                        </Box>
-                    </Box>
+                    </div>
                 );
             case 'search':
-                return <Box p={2}><Text>Search Content</Text></Box>;
+                return (
+                    <div className="p-2">
+                        <div className="flex flex-col items-center justify-between">
+                            <span className="text-white">Search</span>
+                            <input
+                                type="text"
+                                className="w-full p-2 bg-gray-800 text-white rounded-md"
+                                placeholder="Search..."
+                            />
+                        </div>
+                    </div>
+                );
             case 'extensions':
-                return <Box p={2}><Text>Extensions Content</Text></Box>;
+                return (
+                    <div className="p-2">
+                        <span className="text-white">Extensions Content</span>
+                    </div>
+                );
             default:
                 return null;
         }
@@ -59,44 +67,26 @@ const ContentArea: React.FC<ContentAreaProps> = ({ width, activeTab, onFileSelec
     const renderFolderOrFiles = (items: any) => {
         if (!items) return null;
         return Object.entries(items).map(([name, type]: [string, any]) => (
-            <List.Item key={name} display="flex" alignItems="center" cursor="pointer" onClick={() => handleItemClick(name, type)}>
-                {type === 'directory' ? <FolderOpenDot /> : <File />}
-                <Text ml={2}>{name}</Text>
-            </List.Item>
+            <li
+                key={name}
+                className="flex items-center cursor-pointer text-white hover:bg-gray-700 p-1 rounded"
+                onClick={() => handleItemClick(name, type)}
+            >
+                {type === "directory" ? <FolderOpenDot /> : <File />}
+                <span className="ml-2">{name}</span>
+            </li>
         ));
     };
 
     const handleItemClick = (name: string, type: any) => {
         if (type === 'file') {
-            // onFileSelect(path.join(selectedFolder!, name)); // Use the full path
             onFileSelect(name);
         } else if (type === 'directory') {
-            // Optionally, expand the directory (implement recursive folder structure if needed)
             console.log(`Expanding folder: ${name}`);
         }
     };
 
-    // useEffect(() => {
-    //     // ipcRenderer.on('folder-structure', (event, structure) => {
-    //     //     setFolderStructure(structure);
-    //     //     setSelectedFolder(structure.path); // Store the folder path
-    //     // });
-
-    //     return () => {
-    //        // ipcRenderer.removeAllListeners('folder-structure');
-    //     };
-    // }, []);
     useEffect(() => {
-        // const listener = (event: Electron.IpcRendererEvent, structure: any) => {
-        //     setFolderStructure(structure);
-        //     setSelectedFolder(structure.path); // Store the folder path
-        // };
-
-        // window.electron.ipcRenderer.on('folder-structure', listener);
-
-        // return () => {
-        //     window.electron.ipcRenderer.removeAllListeners('folder-structure');
-        // };
         const listener = (event: IpcRendererEvent, structure: any) => {
             setFolderStructure(structure);
             setSelectedFolder(structure.path); // Store the folder path
@@ -109,58 +99,13 @@ const ContentArea: React.FC<ContentAreaProps> = ({ width, activeTab, onFileSelec
         };
     }, []);
     return (
-        <Box
-            w={`${width}px`}
-            bg="#191B1C"
-            transition="all 0.3s"
-            overflowY={width === 0 ? 'hidden' : 'auto'}
-            p={width === 0 ? 0 : 2}
-            h="100%"
+        <div
+            className={` bg-[#191B1C] transition-all duration-300 "
+                } h-full`}
         >
             {renderContent()}
-        </Box>
+        </div>
     );
 };
 
 export default ContentArea;
-
-// interface ContentAreaProps {
-//     width: number;
-//     activeTab: string;
-// }
-
-// const ContentArea: React.FC<ContentAreaProps> = ({ width, activeTab }) => {
-//     const renderContent = () => {
-//         switch (activeTab) {
-//             case 'explorer':
-//                 return (
-//                     <Box p={2}>
-//                         <Text>Explorer</Text>
-//                         <Box mt={2}>
-//                             <Text>NO FOLDER OPENED</Text>
-//                         </Box>
-//                     </Box>
-//                 );
-//             case 'search':
-//                 return <Box p={2}><Text>Search Content</Text></Box>;
-//             case 'extensions':
-//                 return <Box p={2}><Text>Extensions Content</Text></Box>;
-//             default:
-//                 return null;
-//         }
-//     };
-
-//     return (
-//         <Box
-//             w={`${width}px`} 
-//             bg="#191B1C"
-//             transition="all 0.3s"
-//             overflowY="auto"
-//             h="100%"
-//         >
-//             {renderContent()}
-//         </Box>
-//     );
-// };
-
-// export default ContentArea;

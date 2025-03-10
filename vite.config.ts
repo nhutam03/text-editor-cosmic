@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -16,5 +17,10 @@ export default defineConfig(({ command, mode }) => {
     },
     base: isElectron ? './' : '/', // Sử dụng đường dẫn tương đối khi build cho Electron
     plugins: [react()],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
   };
 });
