@@ -114,29 +114,6 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) =
         }
     };
 
-    // const renderFolderOrFiles = (items: any) => {
-    //     if (!items) return null;
-    //     return Object.entries(items).map(([name, type]: [string, any]) => (
-
-    //         <li
-    //             key={name}
-    //             className="flex items-center cursor-pointer text-white hover:bg-gray-700 p-1 rounded"
-    //             onClick={() => handleItemClick(name, type)}
-    //         >
-    //             {type === "directory" ? <FolderOpenDot /> : <File />}
-    //             <span className="ml-2">{name}</span>
-    //         </li>
-    //     ));
-    // };
-
-    // const handleItemClick = (name: string, type: any) => {
-    //     if (type === 'file') {
-    //         onFileSelect(name);
-    //     } else if (type === 'directory') {
-    //         console.log(`Expanding folder: ${name}`);
-    //     }
-    // };
-
     useEffect(() => {
         window.electron.ipcRenderer.on("file-content", (event: IpcRendererEvent, data: any) => {
             if (data.error) {
@@ -162,19 +139,6 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) =
         };
     }, []);
 
-
-    // useEffect(() => {
-    //     const listener = (event: IpcRendererEvent, structure: any) => {
-    //         setFolderStructure(structure);
-    //         setSelectedFolder(structure.path); // Store the folder path
-    //     };
-
-    //     window.electron.ipcRenderer.on('folder-structure', listener);
-
-    //     return () => {
-    //         window.electron.ipcRenderer.removeAllListeners('folder-structure');
-    //     };
-    // }, []);
     return (
         <div
             className={` bg-[#191B1C] transition-all duration-300 "
