@@ -1,9 +1,15 @@
 import { app, BrowserWindow, dialog, ipcMain, SaveDialogReturnValue } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import kernel from './src/renderer/plugins/kernel';
+import pdfExportPlugin from './src/plugins/exportToPDF/index';
 import { OpenDialogReturnValue } from 'electron';
+import { env } from 'process';
 
 let selectedFolder: string | null = null;
+const apiAnvil = env.MY_ANVIL_SECRET_KEY;
+const pdfTemplateID = env.TEMPLATE_ID || '';
+let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
     const win = new BrowserWindow({
@@ -130,6 +136,35 @@ app.whenReady().then(() => {
 
         };
     }
+
+    // Đăng ký plugin
+    kernel.registerPlugin(pdfExportPlugin.name, pdfExportPlugin);
+
+    // IPC để gọi plugin từ renderer
+    ipcMain.handle("export-pdf", async (_event, content: string) => {
+        if (!mainWindow) return null;
+        const result = await dialog.showSaveDialog(mainWindow, {
+            title: "Save PDF",
+            defaultPath: "document.pdf",
+            filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+        }) as unknown as SaveDialogReturnValue;
+
+        // const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        //     title: "Save PDF",
+        //     defaultPath: "document.pdf",
+        //     filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+        // });
+
+        if (result.canceled || !result.filePath) return null;
+
+        return await kernel.executePlugin("pdf-export", content, result.filePath);
+    });
+
+    // Thêm IPC handler để lấy danh sách plugin
+    ipcMain.handle("get-plugins", async () => {
+        return kernel.getPlugins();
+    });
+
 });
 
 app.on('window-all-closed', () => {

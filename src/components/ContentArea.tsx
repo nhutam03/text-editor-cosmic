@@ -11,6 +11,7 @@ interface ContentAreaProps {
 const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) => {
     const [folderStructure, setFolderStructure] = useState<any>(null); // Store folder/file structure
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);  
+    const [plugins, setPlugins] = useState<string[]>([]);
     const renderContent = () => {
         switch (activeTab) {
             case 'explorer':
@@ -51,7 +52,18 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) =
             case 'extensions':
                 return (
                     <div className="p-2">
-                        <span className="text-white">Extensions Content</span>
+                        <span className="text-white">Extensions</span>
+                        {plugins.length > 0 ? (
+                            <ul className="mt-2 space-y-2">
+                                {plugins.map((plugin) => (
+                                    <li key={plugin} className="text-white bg-gray-800 p-2 rounded">
+                                        {plugin}
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-white text-sm mt-2">No plugins available</p>
+                        )}
                     </div>
                 );
             default:
@@ -138,6 +150,22 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) =
             window.electron.ipcRenderer.removeAllListeners('folder-structure');
         };
     }, []);
+    // Lấy danh sách plugin khi tab extensions được mở
+    useEffect(() => {
+        if (activeTab === "extensions") {
+            if (window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.getPlugins === "function") {
+                window.electron.ipcRenderer.getPlugins().then((pluginList) => {
+                    setPlugins(pluginList || []);
+                }).catch((error) => {
+                    console.error("Failed to fetch plugins:", error);
+                    setPlugins([]);
+                });
+            } else {
+                console.error("electron.ipcRenderer.getPlugins is not available");
+                setPlugins([]);
+            }
+        }
+    }, [activeTab]);
 
     return (
         <div

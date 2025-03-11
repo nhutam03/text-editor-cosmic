@@ -8,6 +8,8 @@ declare global {
                 send: (channel: string, ...args: any[]) => void;
                 on: (channel: string, listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void) => void;
                 removeAllListeners: (channel: string) => void;
+                getPlugins: () => Promise<string[]>;
+                getPlugin: (plugin: string) => Promise<any>;
             };
         };
     }

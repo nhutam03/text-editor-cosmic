@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('electron', {
         send: (channel, ...args) => ipcRenderer.send(channel, ...args),
         on: (channel, listener) => ipcRenderer.on(channel, listener),
         removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+        getPlugins: () => ipcRenderer.invoke("get-plugins"),
+        getPlugin: (plugin) => ipcRenderer.invoke("getPlugin", plugin),
     },
 
 });
