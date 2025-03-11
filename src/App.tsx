@@ -16,6 +16,7 @@ const App: React.FC = () => {
   });
   const [contentSize, setContentSize] = useState(20);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
+  const [currentContent, setCurrentContent] = useState("");
   const defaultContentSize = 20;
 
   const toggleRightSidebar = () => {
@@ -32,7 +33,9 @@ const App: React.FC = () => {
   const handleContentChange = (newStats: Partial<typeof stats>) => {
     setStats((prev) => ({ ...prev, ...newStats }));
   };
-
+  const updateCurrentContent = (content: string) => {
+    setCurrentContent(content);
+  };
   const handleFileSelect = (filePath: string) => {
     loadFileContent(filePath);
     console.log('File selected:', filePath);
@@ -58,7 +61,11 @@ const App: React.FC = () => {
         <ResizablePanel 
           defaultSize={isRightSidebarCollapsed ? 0 : contentSize}
           >
-          <ContentArea activeTab={activeTab} onFileSelect={handleFileSelect} />
+          <ContentArea 
+            activeTab={activeTab} 
+            onFileSelect={handleFileSelect} 
+            currentContent={currentContent}
+            />
         </ResizablePanel>
 
         <ResizableHandle />
@@ -68,7 +75,11 @@ const App: React.FC = () => {
          defaultSize={100 - contentSize} minSize={30}
          >
           <div className="flex flex-col h-full">
-            <Editor onContentChange={handleContentChange} loadFileContent={loadFileContent} />
+            <Editor 
+              onContentChange={handleContentChange} 
+              loadFileContent={loadFileContent} 
+              updateContent={updateCurrentContent}
+              />
             <StatusBar stats={stats} />
           </div>
         </ResizablePanel>

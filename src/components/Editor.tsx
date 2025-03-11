@@ -10,10 +10,9 @@ import { Alert, AlertDescription } from './ui/alert';
 interface EditorProps {
     onContentChange: (stats: { line: number; column: number; wordCount: number }) => void;
     loadFileContent: (filePath: string) => void;
+    updateContent: (content: string) => void; 
 }
-const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileContent }) => {
-    //const [openFiles, setOpenFiles] = useState<string[]>(['File1.txt']);
-    //const [activeFile, setActiveFile] = useState('File1.txt');
+const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileContent, updateContent }) => {
     const [openFiles, setOpenFiles] = useState<string[]>([]);
     const [activeFile, setActiveFile] = useState<string | null>(null);
     const [editorContent, setEditorContent] = useState<string>('');
@@ -22,6 +21,7 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
     const handleEditorChange = (value: string | undefined) => {
         if (value) {
             setEditorContent(value);
+            updateContent(value);
             const lines = value.split('\n');
             const line = lines.length;
             const words = value.trim().split(/\s+/).filter(Boolean).length;
@@ -86,6 +86,7 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
         setActiveFile(newFileName);
         setEditorContent('');
         setLanguage('text');
+        updateContent('');
     };
 
     const saveFile = () => {
@@ -105,6 +106,7 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
             }
             const { content, filePath } = data;
             setEditorContent(content || '');
+            updateContent(content || '');
             if (!openFiles.includes(filePath || '')) {
                 setOpenFiles([...openFiles, filePath || '']);
             }

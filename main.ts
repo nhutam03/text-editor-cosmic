@@ -12,7 +12,7 @@ const pdfTemplateID = env.TEMPLATE_ID || '';
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
-    const win = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         icon: path.join(__dirname, '../public/logo.ico'),
@@ -24,11 +24,12 @@ function createWindow() {
     });
 
     if (process.env.NODE_ENV === 'development') {
-        win.loadURL('http://localhost:5173');
-        win.webContents.openDevTools(); // Mở DevTools để debug
+        mainWindow.loadURL('http://localhost:5173');
+        mainWindow.webContents.openDevTools(); // Mở DevTools để debug
     } else {
-        win.loadFile(path.join(__dirname, '/index.html'));
+        mainWindow.loadFile(path.join(__dirname, '/index.html'));
     }
+    return mainWindow;
 }
 
 app.whenReady().then(() => {
@@ -142,23 +143,34 @@ app.whenReady().then(() => {
 
     // IPC để gọi plugin từ renderer
     ipcMain.handle("export-pdf", async (_event, content: string) => {
-        if (!mainWindow) return null;
+        if (!mainWindow) {
+            console.error("mainWindow is null");
+            return null;
+        }
+        console.log("Opening save dialog for PDF...");
         const result = await dialog.showSaveDialog(mainWindow, {
             title: "Save PDF",
             defaultPath: "document.pdf",
             filters: [{ name: "PDF Files", extensions: ["pdf"] }],
         }) as unknown as SaveDialogReturnValue;
+        console.log("Save dialog result:", result);
 
-        // const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-        //     title: "Save PDF",
-        //     defaultPath: "document.pdf",
-        //     filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-        // });
-
-        if (result.canceled || !result.filePath) return null;
-
-        return await kernel.executePlugin("pdf-export", content, result.filePath);
+        if (result.canceled || !result.filePath) {
+            console.log("Save dialog canceled or no file path selected");
+            return null;
+        }
+        try {
+            const pdfPath = await kernel.executePlugin("pdf-export", content, result.filePath);
+            console.log("PDF exported successfully:", pdfPath);
+            return pdfPath;
+        } catch (error) {
+            console.error("Error executing pdf-export plugin:", error);
+            return null;
+        }
     });
+
+        //return await kernel.executePlugin("pdf-export", content, result.filePath);
+    //});
 
     // Thêm IPC handler để lấy danh sách plugin
     ipcMain.handle("get-plugins", async () => {

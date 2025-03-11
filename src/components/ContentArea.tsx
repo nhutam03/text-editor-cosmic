@@ -6,9 +6,10 @@ import { Button } from './ui/button';
 interface ContentAreaProps {
     activeTab: string;
     onFileSelect: (filePath: string) => void;
+    currentContent: string;
 }
 
-const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) => {
+const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, currentContent }) => {
     const [folderStructure, setFolderStructure] = useState<any>(null); // Store folder/file structure
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);  
     const [plugins, setPlugins] = useState<string[]>([]);
@@ -54,13 +55,28 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) =
                     <div className="p-2">
                         <span className="text-white">Extensions</span>
                         {plugins.length > 0 ? (
-                            <ul className="mt-2 space-y-2">
-                                {plugins.map((plugin) => (
-                                    <li key={plugin} className="text-white bg-gray-800 p-2 rounded">
-                                        {plugin}
-                                    </li>
-                                ))}
-                            </ul>
+                            <div>
+                                <ul className="mt-2 space-y-2">
+                                    {plugins.map((plugin) => (
+                                        <li key={plugin} className="text-white bg-gray-800 p-2 rounded flex justify-between items-center">
+                                            {plugin}
+                                            {plugin === "pdf-export" && (
+                                                <Button
+                                                    className="ml-2 bg-blue-600 hover:bg-blue-700 text-white p-1 rounded"
+                                                    onClick={() => handleApplyPlugin(plugin, currentContent)}
+                                                >
+                                                    Apply
+                                                </Button>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                                {plugins.includes("pdf-export") && (
+                                    <p className="text-gray-400 text-xs mt-2">
+                                        Click "Apply" on pdf-export to export the current file to PDF.
+                                    </p>
+                                )}
+                            </div>
                         ) : (
                             <p className="text-white text-sm mt-2">No plugins available</p>
                         )}
@@ -123,6 +139,39 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect }) =
             window.electron.ipcRenderer.send("open-file-request", filePath);
         } else if (node.type === "directory") {
             toggleFolder(node.name);
+        }
+    };
+
+    const handleApplyPlugin = (plugin: string, content: string) => {
+        // if (plugin === "pdf-export" && content) {
+        //     window.electron.ipcRenderer.invoke("export-pdf", content).then((result) => {
+        //         if (result) {
+        //             alert(`PDF saved at: ${result}`);
+        //         } else {
+        //             alert("PDF export cancelled or failed.");
+        //         }
+        //     }).catch((error) => {
+        //         console.error("Error exporting PDF:", error);
+        //         alert("Failed to export PDF.");
+        //     });
+        // }
+        if (plugin === "pdf-export") {
+            if (!content) {
+                alert("No content to export. Please open a file first.");
+                return;
+            }
+            console.log("Exporting PDF with content:", content);
+            window.electron.ipcRenderer.invoke("export-pdf", content).then((result) => {
+                console.log("Export PDF result:", result);
+                if (result) {
+                    alert(`PDF saved at: ${result}`);
+                } else {
+                    alert("PDF export cancelled or failed.");
+                }
+            }).catch((error) => {
+                console.error("Error exporting PDF:", error);
+                alert("Failed to export PDF: " + error.message);
+            });
         }
     };
 
