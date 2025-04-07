@@ -8,8 +8,11 @@
     "build": "cross-env ELECTRON=true vite build",
     "build-electron": "tsc --project tsconfig.electron.json && copy preload.js dist\\preload.js",
     "electron": "npm run build-electron && electron .",
-    "electron-dev": "cross-env ELECTRON=true concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run electron\"",
-    "dist": "npm run build && npm run build-electron && electron-builder"
+    "electron-dev": "cross-env ELECTRON=true concurrently \"npm run dev\" \"node electron-dev.js\"",
+    "dist": "npm run build && npm run build-electron && electron-builder",
+    "clean": "rimraf dist",
+    "rebuild": "npm run clean && npm run build && npm run build-electron",
+    "dev-full": "npm run rebuild && npm run electron-dev"
   },
   "build": {
     "appId": "com.texteditor.app",
@@ -61,6 +64,7 @@
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "chokidar": "^4.0.3",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "^34.3.0",
@@ -70,6 +74,7 @@
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^15.15.0",
     "postcss": "^8.5.3",
+    "rimraf": "^5.0.10",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.24.1",

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { File, FolderOpenDot } from 'lucide-react';
+import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus, MoreHorizontal } from 'lucide-react';
 import { IpcRendererEvent } from 'electron';
 import { Button } from './ui/button';
 
@@ -11,30 +11,45 @@ interface ContentAreaProps {
 
 const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, currentContent }) => {
     const [folderStructure, setFolderStructure] = useState<any>(null); // Store folder/file structure
-    const [selectedFolder, setSelectedFolder] = useState<string | null>(null);  
+    const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
     const [plugins, setPlugins] = useState<string[]>([]);
+    const [pluginMessage, setPluginMessage] = useState<string | null>(null); // Thông báo từ plugin
     const renderContent = () => {
         switch (activeTab) {
             case 'explorer':
                 return (
-                    <div className="flex flex-col items-start justify-between w-full p-2">
-                        <span className="text-white">Explorer</span>
-                            {selectedFolder ? (
-                                <ul className="space-y-1">
-                                    {renderFolderOrFiles(folderStructure)}
-                                </ul>
-                            ) : (
-                                <div className="flex flex-col justify-center w-full">
-                                <span className="text-white text-sm">You have not yet opened a folder</span>
-                                    <Button
-                                        className="bg-transparent hover:bg-gray-700 bg-gray-800 text-white p-2 mt-2"
-                                        onClick={openFolder}
-                                    >
-                                        <File size={5} />
-                                        <span className="ml-2">Open Folder</span>
-                                    </Button>
+                    <div className="flex flex-col h-full">
+                        <div className="flex items-center justify-between p-2 text-xs">
+                            <div className="flex items-center space-x-2">
+                                <RefreshCw size={14} className="text-gray-400 hover:text-white cursor-pointer" />
+                                <FilePlus size={14} className="text-gray-400 hover:text-white cursor-pointer" />
+                                <FolderPlus size={14} className="text-gray-400 hover:text-white cursor-pointer" onClick={openFolder} />
+                                <MoreHorizontal size={14} className="text-gray-400 hover:text-white cursor-pointer" />
+                            </div>
+                        </div>
+                        {selectedFolder ? (
+                            <div className="overflow-y-auto">
+                                <div className="text-sm">
+                                    <div className="flex items-center px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer">
+                                        <ChevronDown size={16} className="text-gray-400" />
+                                        <span className="ml-1 font-semibold">text-editor-app</span>
+                                    </div>
+                                    <div className="pl-4">
+                                        {renderFolderOrFiles(folderStructure)}
+                                    </div>
                                 </div>
-                            )}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                                <span className="text-gray-400 text-sm mb-4">You have not yet opened a folder</span>
+                                <Button
+                                    className="bg-[#0e639c] hover:bg-[#1177bb] text-white px-4 py-2 rounded-sm text-sm"
+                                    onClick={openFolder}
+                                >
+                                    <span>Open Folder</span>
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 );
             case 'search':
@@ -63,7 +78,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                                             {plugin === "pdf-export" && (
                                                 <Button
                                                     className="ml-2 bg-blue-600 hover:bg-blue-700 text-white p-1 rounded"
-                                                    onClick={() => handleApplyPlugin(plugin, currentContent)}
+                                                    onClick={() => handleApplyPlugin(plugin)}
                                                 >
                                                     Apply
                                                 </Button>
@@ -116,12 +131,11 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                         onClick={() => handleItemClick(node)}
                     >
                         {node.type === "directory" ? (
-                            <FolderOpenDot
-                                className={`transition-transform ${expandedFolders.has(node.name) ? "rotate-90" : ""
-                                    }`}
-                            />
+                            expandedFolders.has(node.name) ?
+                            <ChevronDown size={16} className="text-gray-400" /> :
+                            <ChevronRight size={16} className="text-gray-400" />
                         ) : (
-                            <File />
+                            <File size={16} className="text-blue-400" />
                         )}
                         <span className="ml-2">{node.name}</span>
                     </div>
@@ -136,59 +150,45 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     const handleItemClick = (node: any) => {
         if (node.type === "file") {
             const filePath = selectedFolder ? `${selectedFolder}/${node.name}` : node.name;
-            window.electron.ipcRenderer.send("open-file-request", filePath);
+            // Instead of directly sending the IPC message, notify the parent component
+            onFileSelect(filePath);
         } else if (node.type === "directory") {
             toggleFolder(node.name);
         }
     };
 
-    const handleApplyPlugin = (plugin: string, content: string) => {
-        // if (plugin === "pdf-export" && content) {
-        //     window.electron.ipcRenderer.invoke("export-pdf", content).then((result) => {
-        //         if (result) {
-        //             alert(`PDF saved at: ${result}`);
-        //         } else {
-        //             alert("PDF export cancelled or failed.");
-        //         }
-        //     }).catch((error) => {
-        //         console.error("Error exporting PDF:", error);
-        //         alert("Failed to export PDF.");
-        //     });
-        // }
+    // const handleApplyPlugin = (plugin: string, content: string) => {
+    //     if (plugin === "pdf-export") {
+    //         if (!content) {
+    //             alert("No content to export. Please open a file first.");
+    //             return;
+    //         }
+    //         console.log("Exporting PDF with content:", content);
+    //         window.electron.ipcRenderer.invoke("export-pdf", content).then((result) => {
+    //             console.log("Export PDF result:", result);
+    //             if (result) {
+    //                 alert(`PDF saved at: ${result}`);
+    //             } else {
+    //                 alert("PDF export cancelled or failed.");
+    //             }
+    //         }).catch((error) => {
+    //             console.error("Error exporting PDF:", error);
+    //             alert("Failed to export PDF: " + error.message);
+    //         });
+    //     }
+    // };
+    const handleApplyPlugin = (plugin: string) => {
         if (plugin === "pdf-export") {
-            if (!content) {
+            if (!currentContent) {
                 alert("No content to export. Please open a file first.");
                 return;
             }
-            console.log("Exporting PDF with content:", content);
-            window.electron.ipcRenderer.invoke("export-pdf", content).then((result) => {
-                console.log("Export PDF result:", result);
-                if (result) {
-                    alert(`PDF saved at: ${result}`);
-                } else {
-                    alert("PDF export cancelled or failed.");
-                }
-            }).catch((error) => {
-                console.error("Error exporting PDF:", error);
-                alert("Failed to export PDF: " + error.message);
-            });
+            window.electron.ipcRenderer.send("apply-plugin", plugin, currentContent);
         }
     };
 
-    useEffect(() => {
-        window.electron.ipcRenderer.on("file-content", (event: IpcRendererEvent, data: any) => {
-            if (data.error) {
-                console.error("Failed to open file:", data.error);
-            } else {
-                console.log("Opened file:", data.filePath);
-                onFileSelect(data.content); // Gửi nội dung file lên cha
-            }
-        });
-
-        return () => {
-            window.electron.ipcRenderer.removeAllListeners("file-content");
-        };
-    }, []);
+    // We don't need to listen for file-content here anymore
+    // The App component will handle file content loading
     useEffect(() => {
         window.electron.ipcRenderer.on('folder-structure', (event, structure) => {
             setFolderStructure(structure);
@@ -200,26 +200,49 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
         };
     }, []);
     // Lấy danh sách plugin khi tab extensions được mở
+    // useEffect(() => {
+    //     if (activeTab === "extensions") {
+    //         if (window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.getPlugins === "function") {
+    //             window.electron.ipcRenderer.getPlugins().then((pluginList) => {
+    //                 setPlugins(pluginList || []);
+    //             }).catch((error) => {
+    //                 console.error("Failed to fetch plugins:", error);
+    //                 setPlugins([]);
+    //             });
+    //         } else {
+    //             console.error("electron.ipcRenderer.getPlugins is not available");
+    //             setPlugins([]);
+    //         }
+    //     }
+    // }, [activeTab]);
     useEffect(() => {
         if (activeTab === "extensions") {
-            if (window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.getPlugins === "function") {
-                window.electron.ipcRenderer.getPlugins().then((pluginList) => {
-                    setPlugins(pluginList || []);
-                }).catch((error) => {
-                    console.error("Failed to fetch plugins:", error);
-                    setPlugins([]);
-                });
-            } else {
-                console.error("electron.ipcRenderer.getPlugins is not available");
+            window.electron.ipcRenderer.invoke("get-plugins").then((pluginList: string[]) => {
+                setPlugins(pluginList || []);
+            }).catch((error) => {
+                console.error("Failed to fetch plugins:", error);
                 setPlugins([]);
-            }
+            });
+
+            window.electron.ipcRenderer.on("plugin-list", (event, pluginList: string[]) => {
+                setPlugins(pluginList || []);
+            });
+
+            window.electron.ipcRenderer.on("plugin-applied", (event, message: string) => {
+                setPluginMessage(message);
+                setTimeout(() => setPluginMessage(null), 5000); // Ẩn thông báo sau 5 giây
+            });
         }
+
+        return () => {
+            window.electron.ipcRenderer.removeAllListeners("plugin-list");
+            window.electron.ipcRenderer.removeAllListeners("plugin-applied");
+        };
     }, [activeTab]);
 
     return (
         <div
-            className={` bg-[#191B1C] transition-all duration-300 "
-                } h-full`}
+            className="bg-[#252526] h-full overflow-hidden"
         >
             {renderContent()}
         </div>

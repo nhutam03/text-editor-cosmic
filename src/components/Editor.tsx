@@ -1,33 +1,102 @@
-import React, { useEffect, useRef, useState} from 'react';
-import Editor from '@monaco-editor/react';
-// import { spellCheck } from '../plugins/spellCheck';
-// import { wordCount } from '../plugins/wordCount';
-//import { ipcRenderer } from 'electron';
+import React, { useEffect, useState } from 'react';
+import MonacoEditor from '@monaco-editor/react';
 import { IpcRendererEvent } from 'electron';
-import { TriangleAlert } from 'lucide-react';
-import { Button } from './ui/button';
-import { Alert, AlertDescription } from './ui/alert';
+
 interface EditorProps {
-    onContentChange: (stats: { line: number; column: number; wordCount: number }) => void;
     loadFileContent: (filePath: string) => void;
-    updateContent: (content: string) => void; 
+    updateContent: (content: string) => void;
+    onStatsChange?: (stats: any) => void;
+    currentContent?: string; // Add prop for current content
 }
-const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileContent, updateContent }) => {
+
+const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStatsChange, currentContent }) => {
+    const [editor, setEditor] = useState<any>(null);
     const [openFiles, setOpenFiles] = useState<string[]>([]);
     const [activeFile, setActiveFile] = useState<string | null>(null);
-    const [editorContent, setEditorContent] = useState<string>('');
-    const [saveStatus, setSaveStatus] = useState<string | null>(null);
+    // Use the currentContent prop from parent instead of maintaining our own state
+    const [editorContent, setEditorContent] = useState<string>(currentContent || '');
     const [language, setLanguage] = useState<string>('text');
-    const handleEditorChange = (value: string | undefined) => {
-        if (value) {
-            setEditorContent(value);
-            updateContent(value);
-            const lines = value.split('\n');
-            const line = lines.length;
-            const words = value.trim().split(/\s+/).filter(Boolean).length;
-            const column = value.split('\n').pop()?.length || 1;
-            onContentChange({ line, column, wordCount: words });
+    const [saveStatus, setSaveStatus] = useState<string | null>(null);
+    const [stats, setStats] = useState({
+        line: 1,
+        column: 1,
+        wordCount: 0,
+        page: 1,
+        language: 'text',
+        spaces: 2,
+        encoding: 'UTF-8',
+        lineEnding: 'CRLF'
+    });
+
+    // Gửi stats lên component cha khi stats thay đổi
+    useEffect(() => {
+        if (onStatsChange) {
+            onStatsChange(stats);
         }
+    }, [stats, onStatsChange]);
+
+    // Update editor content when currentContent prop changes
+    useEffect(() => {
+        if (currentContent !== undefined) {
+            setEditorContent(currentContent);
+        }
+    }, [currentContent]);
+
+    // State cho StatusBar component - để tương thích với component StatusBar
+    const [statusBarStats] = useState({
+        line: 1,
+        column: 1,
+        wordCount: 0,
+        page: 1,
+        language: 'text'
+    });
+
+    const handleEditorChange = (value: string | undefined) => {
+        const content = value || '';
+        setEditorContent(content);
+        updateContent(content);
+
+        // Cập nhật stats
+        const currentLine = editor?.getPosition()?.lineNumber || 1;
+        const currentColumn = editor?.getPosition()?.column || 1;
+        const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+
+        setStats(prev => ({
+            ...prev,
+            line: currentLine,
+            column: currentColumn,
+            wordCount: wordCount,
+            page: Math.ceil(wordCount / 250),
+            language: language
+        }));
+    };
+
+    const handleEditorDidMount = (editor: any) => {
+        setEditor(editor);
+
+        editor.onDidChangeCursorPosition((e: any) => {
+            setStats(prev => ({
+                ...prev,
+                line: e.position.lineNumber,
+                column: e.position.column
+            }));
+        });
+
+        // Theo dõi các thay đổi về ngôn ngữ
+        editor.onDidChangeModelLanguage((e: any) => {
+            setLanguage(e.newLanguage);
+            setStats(prev => ({
+                ...prev,
+                language: e.newLanguage
+            }));
+        });
+
+        // Cập nhật thông tin ban đầu
+        setStats(prev => ({
+            ...prev,
+            language: editor.getModel()?.getLanguageId() || 'text',
+            spaces: editor.getModel()?.getOptions().tabSize || 2
+        }));
     };
 
     const handleFileClick = (file: string) => {
@@ -35,7 +104,12 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
             loadFileContent(file);
         // Xác định ngôn ngữ dựa trên phần mở rộng của file (ví dụ: .js, .py, .txt, v.v.)
         const extension = file.split('.').pop()?.toLowerCase() || 'txt';
-        setLanguage(getLanguageFromExtension(extension));
+        const detectedLanguage = getLanguageFromExtension(extension);
+        setLanguage(detectedLanguage);
+        setStats(prev => ({
+            ...prev,
+            language: detectedLanguage
+        }));
     };
     // Hàm xác định ngôn ngữ dựa trên phần mở rộng file
     const getLanguageFromExtension = (extension: string): string => {
@@ -66,11 +140,21 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
             setActiveFile(openFiles[0]);
             loadFileContent(openFiles[0]);
             const extension = newActive.split('.').pop()?.toLowerCase() || 'txt';
-            setLanguage(getLanguageFromExtension(extension));
+            const detectedLanguage = getLanguageFromExtension(extension);
+            setLanguage(detectedLanguage);
+            setStats(prev => ({
+                ...prev,
+                language: detectedLanguage
+            }));
         } else if(openFiles.length === 1) {
             setActiveFile('');
             setEditorContent('');
-            setLanguage('text')
+            const defaultLanguage = 'text';
+            setLanguage(defaultLanguage);
+            setStats(prev => ({
+                ...prev,
+                language: defaultLanguage
+            }));
         }
     };
 
@@ -85,7 +169,12 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
         setOpenFiles([...openFiles, newFileName]);
         setActiveFile(newFileName);
         setEditorContent('');
-        setLanguage('text');
+        const defaultLanguage = 'text';
+        setLanguage(defaultLanguage);
+        setStats(prev => ({
+            ...prev,
+            language: defaultLanguage
+        }));
         updateContent('');
     };
 
@@ -97,7 +186,7 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
     };
 
     useEffect(() => {
-        const fileContentListener = (event: IpcRendererEvent, data: { content?: string, filePath?: string, error?: string }) => {
+        const fileContentListener = (_event: IpcRendererEvent, data: { content?: string, filePath?: string, error?: string }) => {
             console.log('Received file-content:', data);
             if (data.error) {
                 setSaveStatus(`Failed to load file: ${data.error}`);
@@ -112,10 +201,15 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
             }
             setActiveFile(filePath || '');
             const extension = filePath?.split('.').pop()?.toLowerCase() || 'txt';
-            setLanguage(getLanguageFromExtension(extension));
+            const detectedLanguage = getLanguageFromExtension(extension);
+            setLanguage(detectedLanguage);
+            setStats(prev => ({
+                ...prev,
+                language: detectedLanguage
+            }));
         };
 
-        const fileSavedListener = (event: IpcRendererEvent, { success, filePath, error }: { success: boolean, filePath: string, error?: string }) => {
+        const fileSavedListener = (_event: IpcRendererEvent, { success, filePath, error }: { success: boolean, filePath: string, error?: string }) => {
             if (success) {
                 setSaveStatus(`File saved successfully: ${filePath}`);
                 setOpenFiles(prevFiles => {
@@ -124,20 +218,30 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
                 });
                 setActiveFile(filePath);
                 const extension = filePath.split('.').pop()?.toLowerCase() || 'txt';
-                setLanguage(getLanguageFromExtension(extension));
+                const detectedLanguage = getLanguageFromExtension(extension);
+                setLanguage(detectedLanguage);
+                setStats(prev => ({
+                    ...prev,
+                    language: detectedLanguage
+                }));
             } else {
                 setSaveStatus(`Failed to save file: ${error || 'Unknown error'}`);
             }
             setTimeout(() => setSaveStatus(null), 3000);
         };
 
-        const newFileListener = (event: IpcRendererEvent, { fileName, success, error }: { fileName: string, success: boolean, error?: string }) => {
+        const newFileListener = (_event: IpcRendererEvent, { fileName, success, error }: { fileName: string, success: boolean, error?: string }) => {
             if (success) {
                 setOpenFiles([...openFiles, fileName]);
                 setActiveFile(fileName);
                 setEditorContent('');
                 setSaveStatus(`New file created: ${fileName}`);
-                setLanguage('markdown');
+                const detectedLanguage = 'markdown';
+                setLanguage(detectedLanguage);
+                setStats(prev => ({
+                    ...prev,
+                    language: detectedLanguage
+                }));
             } else {
                 setSaveStatus(`Failed to create file: ${error || 'Unknown error'}`);
             }
@@ -213,81 +317,32 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
     }, [openFiles]);
 
     return (
-        <div className="flex flex-1 flex-col bg-gray-900">
-            <div className="flex bg-gray-800 p-2 border-b border-gray-700 h-[30px] items-center overflow-x-auto">
-                {openFiles.map((file) => (
-                    <div
-                        key={file}
-                        className={`flex items-center bg-${activeFile === file ? "gray-700" : "gray-800"
-                            } p-1 px-2 mr-2 rounded cursor-pointer`}
-                        onClick={() => handleFileClick(file)}
-                    >
-                        <span className="text-xs">{file}</span>
-                        <Button
-                            className="ml-1 h-5 w-5 p-0 bg-transparent hover:bg-red-600 text-red-500 hover:text-white rounded-full"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleCloseFile(file);
-                            }}
-                        >
-                            ×
-                        </Button>
-                    </div>
-                ))}
-                <Button
-                    className="ml-2 h-6 px-2 text-xs bg-gray-700 hover:bg-gray-600"
-                    onClick={createNewFile}
-                >
-                    New File
-                </Button>
-                <Button
-                    className="ml-2 h-6 px-2 text-xs bg-gray-700 hover:bg-gray-600"
-                    onClick={saveFile}
-                >
-                    Save
-                </Button>
-            </div>
-
-            {saveStatus && (
-                <Alert
-                    className={`mb-2 ${saveStatus.includes("success")
-                            ? "bg-green-900 text-green-100"
-                            : "bg-red-900 text-red-100"
-                        }`}
-                >
-                    <TriangleAlert className="h-4 w-4" />
-                    <AlertDescription>{saveStatus}</AlertDescription>
-                </Alert>
-            )}
-            <div className="flex-1">
-                <Editor
-                    height="100%"
-                    language={language}
+        <div className="flex flex-col h-full">
+            <div className="flex-1 bg-[#1e1e1e]">
+                <MonacoEditor
+                    height="calc(100vh - 30px - 22px - 35px - 32px - 35px)"
                     defaultLanguage="text"
-                    defaultValue="// Start coding here"
-                    value={editorContent}
+                    value={currentContent || editorContent}
                     theme="vs-dark"
                     onChange={handleEditorChange}
+                    onMount={handleEditorDidMount}
+                    language={language}
                     options={{
-                        minimap: { enabled: false },
+                        minimap: { enabled: true, scale: 0.8, side: 'right' },
                         fontSize: 14,
+                        wordWrap: 'on',
+                        lineNumbers: 'on',
+                        renderLineHighlight: 'all',
                         automaticLayout: true,
-                    }}
-                    beforeMount={(monaco) => {
-                        monaco.languages.register({ id: "text" });
-                        monaco.languages.setLanguageConfiguration("text", {
-                            autoClosingPairs: [
-                                { open: '"', close: '"' },
-                                { open: "(", close: ")" },
-                                { open: "[", close: "]" },
-                                { open: "{", close: "}" },
-                            ],
-                            brackets: [
-                                ["(", ")"],
-                                ["[", "]"],
-                                ["{", "}"],
-                            ],
-                        });
+                        scrollBeyondLastLine: false,
+                        cursorBlinking: 'smooth',
+                        cursorSmoothCaretAnimation: 'on',
+                        scrollbar: {
+                            vertical: 'visible',
+                            horizontal: 'visible',
+                            verticalScrollbarSize: 10,
+                            horizontalScrollbarSize: 10
+                        }
                     }}
                 />
             </div>
@@ -295,4 +350,4 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
     );
 };
 
-export default EditorComponent;
+export default Editor;
