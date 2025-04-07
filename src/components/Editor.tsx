@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState} from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { Monaco } from '@monaco-editor/react';
 // import { spellCheck } from '../plugins/spellCheck';
 // import { wordCount } from '../plugins/wordCount';
 //import { ipcRenderer } from 'electron';
@@ -18,6 +18,66 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
     const [editorContent, setEditorContent] = useState<string>('');
     const [saveStatus, setSaveStatus] = useState<string | null>(null);
     const [language, setLanguage] = useState<string>('text');
+    //spellcheck
+    const [editorInstance, setEditorInstance] = useState<any>(null);
+    const [monacoInstance, setMonacoInstance] = useState<Monaco | null>(null);
+    const spellCheckDecorations = useRef<string[]>([]);
+    const debounce = (func: Function, wait: number) => {
+        let timeout: NodeJS.Timeout;
+        return function executedFunction(...args: any[]) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    };
+    const performSpellCheck = async (content: string) => {
+        if (!editorInstance || !monacoInstance || language !== 'text') return;
+
+        try {
+            const spellCheckResults = await window.electron.ipcRenderer.invoke("spell-check", content);
+            if (!spellCheckResults) return;
+
+            const model = editorInstance.getModel();
+            if (!model) return;
+
+            const decorations = spellCheckResults.map((error: { word: string | any[]; suggestions: any[]; }) => {
+                const text = model.getValue();
+                const wordRegExp = new RegExp(`\\b${error.word}\\b`, 'g');
+                const matches = [...text.matchAll(wordRegExp)];
+
+                return matches.map(match => {
+                    const startPosition = model.getPositionAt(match.index!);
+                    const endPosition = model.getPositionAt(match.index! + error.word.length);
+
+                    return {
+                        range: new monacoInstance.Range(
+                            startPosition.lineNumber,
+                            startPosition.column,
+                            endPosition.lineNumber,
+                            endPosition.column
+                        ),
+                        options: {
+                            className: 'squiggly-error',
+                            hoverMessage: { value: `Spelling error: "${error.word}"\nSuggestions: ${error.suggestions.slice(0, 3).join(', ')}` }
+                        }
+                    };
+                });
+            }).flat();
+
+            spellCheckDecorations.current = editorInstance.deltaDecorations(
+                spellCheckDecorations.current,
+                decorations
+            );
+        } catch (error) {
+            console.error('Spell check failed:', error);
+        }
+    };
+
+    const debouncedSpellCheck = debounce(performSpellCheck, 500);
+
     const handleEditorChange = (value: string | undefined) => {
         if (value) {
             setEditorContent(value);
@@ -27,6 +87,11 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
             const words = value.trim().split(/\s+/).filter(Boolean).length;
             const column = value.split('\n').pop()?.length || 1;
             onContentChange({ line, column, wordCount: words });
+
+            // Chỉ thực hiện spell check khi đang ở chế độ text
+            if (language === 'text') {
+                debouncedSpellCheck(value);
+            }
         }
     };
 
@@ -74,6 +139,7 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
         }
     };
 
+
 //     const loadFileContent = (filePath: string) => {
 // //        ipcRenderer.send('open-file-request', filePath);
 //         window.electron.ipcRenderer.send('open-file-request', filePath);
@@ -114,6 +180,8 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
             const extension = filePath?.split('.').pop()?.toLowerCase() || 'txt';
             setLanguage(getLanguageFromExtension(extension));
         };
+
+      
 
         const fileSavedListener = (event: IpcRendererEvent, { success, filePath, error }: { success: boolean, filePath: string, error?: string }) => {
             if (success) {
@@ -211,7 +279,19 @@ const EditorComponent: React.FC<EditorProps> = ({ onContentChange, loadFileConte
         //     window.electron.ipcRenderer.removeAllListeners('file-content');
         // };
     }, [openFiles]);
-
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.textContent = `
+            .squiggly-error {
+                border-bottom: 2px wavy #ff0000;
+            }
+        `;
+        document.head.appendChild(style);
+        return () => {
+            document.head.removeChild(style);
+        };
+    }, []);
+    
     return (
         <div className="flex flex-1 flex-col bg-gray-900">
             <div className="flex bg-gray-800 p-2 border-b border-gray-700 h-[30px] items-center overflow-x-auto">
