@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tích hợp Tailwind CSS và DaisyUI thông qua CDN */
+body {
+    @apply bg-gray-900 text-white;
+}
+
+button:focus {
+    @apply outline-none;
+}
+
+#sidebar {
+    @apply transition-all duration-300;
+}
+
+#contentArea {
+    @apply transition-all duration-300;
+}
+
+#editor {
+    height: 100% !important;
+    width: 100% !important;
+}
+#resizer {
+    @apply w-1 bg-gray-500 cursor-col-resize;
+    height: 100%;
+    user-select: none;
+}
