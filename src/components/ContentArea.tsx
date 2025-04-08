@@ -3,6 +3,12 @@ import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, Folde
 import { IpcRendererEvent } from 'electron';
 import { Button } from './ui/button';
 
+interface FolderStructureItem {
+    name: string;
+    type: 'directory' | 'file';
+    children?: FolderStructureItem[];
+}
+
 interface ContentAreaProps {
     activeTab: string;
     onFileSelect: (filePath: string) => void;
@@ -10,10 +16,11 @@ interface ContentAreaProps {
 }
 
 const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, currentContent }) => {
-    const [folderStructure, setFolderStructure] = useState<any>(null); // Store folder/file structure
+    const [folderStructure, setFolderStructure] = useState<FolderStructureItem | null>(null); // Store folder/file structure
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
     const [plugins, setPlugins] = useState<string[]>([]);
     const [pluginMessage, setPluginMessage] = useState<string | null>(null); // Thông báo từ plugin
+    const [showChildren, setShowChildren] = useState<boolean>(true); // Control visibility of children
     const renderContent = () => {
         switch (activeTab) {
             case 'explorer':
@@ -22,7 +29,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                         <div className="flex items-center justify-between p-2 text-xs">
                             <div className="flex items-center space-x-2">
                                 <RefreshCw size={14} className="text-gray-400 hover:text-white cursor-pointer" />
-                                <FilePlus size={14} className="text-gray-400 hover:text-white cursor-pointer" />
+                                <FilePlus size={14} className="text-gray-400 hover:text-white cursor-pointer"/>
                                 <FolderPlus size={14} className="text-gray-400 hover:text-white cursor-pointer" onClick={openFolder} />
                                 <MoreHorizontal size={14} className="text-gray-400 hover:text-white cursor-pointer" />
                             </div>
@@ -30,13 +37,21 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                         {selectedFolder ? (
                             <div className="overflow-y-auto">
                                 <div className="text-sm">
-                                    <div className="flex items-center px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer">
-                                        <ChevronDown size={16} className="text-gray-400" />
-                                        <span className="ml-1 font-semibold">text-editor-app</span>
+                                    <div
+                                        className="flex items-center px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer"
+                                        onClick={() => toggleRootFolder()}
+                                    >
+                                        {showChildren ?
+                                            <ChevronDown size={16} className="text-gray-400" /> :
+                                            <ChevronRight size={16} className="text-gray-400" />
+                                        }
+                                        <span className="ml-1 font-semibold">{folderStructure?.name || 'No folder'}</span>
                                     </div>
-                                    <div className="pl-4">
-                                        {renderFolderOrFiles(folderStructure)}
-                                    </div>
+                                    {showChildren && (
+                                        <div className="pl-4">
+                                            {folderStructure?.children?.map((child: FolderStructureItem) => renderFolderOrFiles(child))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ) : (
@@ -120,7 +135,11 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
         });
     };
 
-    const renderFolderOrFiles = (node: any) => {
+    const toggleRootFolder = () => {
+        setShowChildren(prev => !prev);
+    };
+
+    const renderFolderOrFiles = (node: FolderStructureItem) => {
         if (!node) return null;
 
         return (
@@ -139,8 +158,8 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                         )}
                         <span className="ml-2">{node.name}</span>
                     </div>
-                    {node.type === "directory" && expandedFolders.has(node.name) && (
-                        <div>{node.children.map(renderFolderOrFiles)}</div>
+                    {node.type === "directory" && expandedFolders.has(node.name) && node.children && (
+                        <div>{node.children.map(child => renderFolderOrFiles(child))}</div>
                     )}
                 </li>
             </ul>

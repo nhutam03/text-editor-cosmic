@@ -257,69 +257,13 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
             window.electron.ipcRenderer.removeAllListeners('file-saved');
             window.electron.ipcRenderer.removeAllListeners('new-file-created');
         };
-        // const fileContentListener = (event: IpcRendererEvent, { content, filePath }: { content: string, filePath: string }) => {
-        //     setEditorContent(content);
-        //     if (!openFiles.includes(filePath)) {
-        //         setOpenFiles([...openFiles, filePath]);
-        //     }
-        //     setActiveFile(filePath);
-        // };
-        // window.electron.ipcRenderer.on('file-content', fileContentListener);
-
-        // return () => {
-        //     window.electron.ipcRenderer.removeAllListeners('file-content');
-        // };
-
-        // const fileSavedListener = (event: IpcRendererEvent, { success, filePath, error }: { success: boolean, filePath: string, error?: string }) => {
-        //     if (success) {
-        //         setSaveStatus(`File saved successfully: ${filePath}`);
-        //         setTimeout(() => setSaveStatus(null), 3000); // Ẩn thông báo sau 3 giây
-        //     } else {
-        //         setSaveStatus(`Failed to save file: ${error || 'Unknown error'}`);
-        //         setTimeout(() => setSaveStatus(null), 3000);
-        //     }
-        // };
-
-        // const newFileListener = (event: IpcRendererEvent, { fileName, success, error }: { fileName: string, success: boolean, error?: string }) => {
-        //     if (success) {
-        //         setOpenFiles([...openFiles, fileName]);
-        //         setActiveFile(fileName);
-        //         setEditorContent('');
-        //         setSaveStatus(`New file created: ${fileName}`);
-        //         setTimeout(() => setSaveStatus(null), 3000);
-        //     } else {
-        //         setSaveStatus(`Failed to create file: ${error || 'Unknown error'}`);
-        //     }
-        // };
-
-        // window.electron.ipcRenderer.on('file-content', fileContentListener);
-        // window.electron.ipcRenderer.on('file-saved', fileSavedListener);
-        // window.electron.ipcRenderer.on('new-file-created', newFileListener);
-
-        // return () => {
-        //     window.electron.ipcRenderer.removeAllListeners('file-content');
-        //     window.electron.ipcRenderer.removeAllListeners('file-saved');
-        //     window.electron.ipcRenderer.removeAllListeners('new-file-created');
-        // };
-        // const listener = (event: Electron.IpcRendererEvent, { content, filePath }: { content: string, filePath: string }) => {
-        //     setEditorContent(content);
-        //     if (!openFiles.includes(filePath)) {
-        //         setOpenFiles([...openFiles, filePath]);
-        //     }
-        //     setActiveFile(filePath);
-        // };
-
-        // window.electron.ipcRenderer.on('file-content', listener);
-
-        // return () => {
-        //     window.electron.ipcRenderer.removeAllListeners('file-content');
-        // };
     }, [openFiles]);
 
     return (
         <div className="flex flex-col h-full">
             <div className="flex-1 bg-[#1e1e1e]">
-                {(currentContent !== undefined && currentContent !== '') || (editorContent && editorContent !== '') ? (
+                {/* Hiển thị editor khi có file đang mở hoặc đã chọn folder */}
+                {activeFile ? (
                     <MonacoEditor
                         height="calc(100vh - 30px - 22px - 35px - 32px - 35px)"
                         defaultLanguage="text"
@@ -343,17 +287,33 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
                                 horizontal: 'visible',
                                 verticalScrollbarSize: 10,
                                 horizontalScrollbarSize: 10
-                            }
+                            },
+                            emptySelectionClipboard: false,
+                            folding: true,
+                            lineDecorationsWidth: 10,
+                            renderWhitespace: 'selection',
+                            renderControlCharacters: true,
+                            guides: { indentation: true },
+                            fixedOverflowWidgets: true
                         }}
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full text-gray-400">
                         <div className="text-xl mb-4">Welcome to Text Editor</div>
-                        <div className="text-sm mb-2">Open a file from the explorer or create a new file to get started</div>
-                        <div className="text-xs">
-                            <span className="text-blue-400">Ctrl+N</span> - New File |
-                            <span className="text-blue-400">Ctrl+O</span> - Open File |
-                            <span className="text-blue-400">Ctrl+S</span> - Save File
+                        <div className="text-sm mb-4">Open a folder or file to get started</div>
+                        <div className="text-sm mb-6">
+                            <div className="flex items-center justify-center mb-2">
+                                <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+N</span>
+                                <span>Create a new file</span>
+                            </div>
+                            <div className="flex items-center justify-center mb-2">
+                                <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+O</span>
+                                <span>Open a file</span>
+                            </div>
+                            <div className="flex items-center justify-center">
+                                <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+S</span>
+                                <span>Save current file</span>
+                            </div>
                         </div>
                     </div>
                 )}
