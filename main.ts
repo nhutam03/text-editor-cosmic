@@ -101,6 +101,7 @@ app.whenReady().then(() => {
 
     // Xử lý mở hộp thoại chọn file
     ipcMain.on('open-file-dialog', async (event) => {
+        console.log('Received open-file-dialog event');
         try {
             const result = await dialog.showOpenDialog({
                 properties: ['openFile'],
@@ -116,6 +117,7 @@ app.whenReady().then(() => {
                 const fileName = path.basename(filePath);
                 const content = fs.readFileSync(filePath, 'utf-8');
                 // Đổi tên sự kiện thành 'file-opened' để phù hợp với App.tsx
+                console.log('Sending file-opened event with:', { fileName, contentLength: content.length });
                 event.sender.send('file-opened', { content, fileName, filePath });
             }
         } catch (error: any) {

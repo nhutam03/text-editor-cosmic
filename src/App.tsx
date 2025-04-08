@@ -10,9 +10,10 @@ const App: React.FC = () => {
   const [contentSize, setContentSize] = useState(20);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
   const [currentContent, setCurrentContent] = useState("");
-  const [openFiles, setOpenFiles] = useState<string[]>(['electron-dev.js', 'package.json', 'app.tsx']);
-  const [activeFile, setActiveFile] = useState<string>('app.tsx');
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [activeFile, setActiveFile] = useState<string>('');
   const [modifiedFiles, setModifiedFiles] = useState<string[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string>('');
   const [showTerminal, setShowTerminal] = useState(false);
   const [activeTerminalTab, setActiveTerminalTab] = useState('TERMINAL');
   const [showFileMenu, setShowFileMenu] = useState(false);
@@ -61,10 +62,17 @@ const App: React.FC = () => {
     }
   };
   const handleFileSelect = (filePath: string) => {
+    // This is called when a file is selected from ContentArea
+    console.log('File selected from ContentArea:', filePath);
+
+    // Load the file content
     loadFileContent(filePath);
-    console.log('File selected:', filePath);
+
+    // The file will be added to openFiles in the handleFileOpened function
+    // when the 'file-opened' event is received
   };
   const loadFileContent = (fileName: string) => {
+    console.log('Loading file content for:', fileName);
     window.electron.ipcRenderer.send('open-file-request', fileName);
   };
 
@@ -103,14 +111,19 @@ const App: React.FC = () => {
   const handleNewFile = () => {
     const newFileName = `new-file-${openFiles.length + 1}.txt`;
 
+    // Create a new array for openFiles
+    const newOpenFiles = [...openFiles];
+
     // Limit to 5 open files - remove oldest if needed
-    let updatedFiles = [...openFiles];
-    if (updatedFiles.length >= 5) {
-      updatedFiles = updatedFiles.slice(1); // Remove the oldest file
+    if (newOpenFiles.length >= 5) {
+      newOpenFiles.shift(); // Remove the oldest file
     }
 
-    updatedFiles.push(newFileName);
-    setOpenFiles(updatedFiles);
+    // Add the new file
+    newOpenFiles.push(newFileName);
+
+    // Update states
+    setOpenFiles(newOpenFiles);
     setActiveFile(newFileName);
     setCurrentContent(''); // Xóa nội dung hiện tại để tạo file mới trống
 
@@ -121,7 +134,8 @@ const App: React.FC = () => {
     }));
 
     // Mark the new file as modified
-    setModifiedFiles([...modifiedFiles, newFileName]);
+    const newModifiedFiles = [...modifiedFiles, newFileName];
+    setModifiedFiles(newModifiedFiles);
 
     closeAllMenus();
 
@@ -132,6 +146,7 @@ const App: React.FC = () => {
   };
 
   const handleOpenFile = () => {
+    console.log('Sending open-file-dialog event');
     window.electron.ipcRenderer.send('open-file-dialog');
     closeAllMenus();
   };
@@ -148,6 +163,11 @@ const App: React.FC = () => {
       }
     } else {
       console.warn('Cannot save file: No active file or content is undefined', { activeFile, contentLength: currentContent?.length });
+
+      // If there's content but no active file, create a new file
+      if (!activeFile && currentContent !== undefined && currentContent.trim() !== '') {
+        handleNewFile();
+      }
     }
     closeAllMenus();
   };
@@ -189,10 +209,38 @@ const App: React.FC = () => {
   };
 
   const handleCloseFile = (fileName: string) => {
+    // Find the index of the file being closed
+    const fileIndex = openFiles.indexOf(fileName);
+
+    // Create a new array without the file to close
     const newOpenFiles = openFiles.filter(file => file !== fileName);
+
+    // Update the openFiles state
     setOpenFiles(newOpenFiles);
+
+    // If the closed file was the active file, set a new active file
     if (activeFile === fileName && newOpenFiles.length > 0) {
-      setActiveFile(newOpenFiles[0]);
+      // Determine which file to activate next
+      let nextActiveFileIndex;
+
+      if (fileIndex > 0) {
+        // If not the first file, activate the previous file
+        nextActiveFileIndex = fileIndex - 1;
+      } else {
+        // If it was the first file, activate the new first file
+        nextActiveFileIndex = 0;
+      }
+
+      // Make sure the index is valid
+      if (nextActiveFileIndex >= newOpenFiles.length) {
+        nextActiveFileIndex = newOpenFiles.length - 1;
+      }
+
+      const nextActiveFile = newOpenFiles[nextActiveFileIndex];
+      setActiveFile(nextActiveFile);
+
+      // Load the content of the new active file
+      loadFileContent(nextActiveFile);
     }
   };
 
@@ -274,19 +322,29 @@ const App: React.FC = () => {
       }
 
       if (data.fileName) {
-        if (!openFiles.includes(data.fileName)) {
+        // Check if the file is already in the openFiles array
+        const fileIndex = openFiles.findIndex(file => file === data.fileName);
+
+        if (fileIndex === -1) {
           console.log('Adding file to open files:', data.fileName);
 
+          // Create a new array with the new file added
+          const newOpenFiles = [...openFiles];
+
           // Limit to 5 open files
-          setOpenFiles(prev => {
-            let updatedFiles = [...prev];
-            if (updatedFiles.length >= 5) {
-              updatedFiles = updatedFiles.slice(1); // Remove the oldest file
-            }
-            updatedFiles.push(data.fileName);
-            return updatedFiles;
-          });
+          if (newOpenFiles.length >= 5) {
+            newOpenFiles.shift(); // Remove the oldest file
+          }
+
+          // Add the new file
+          newOpenFiles.push(data.fileName);
+
+          // Update the state
+          setOpenFiles(newOpenFiles);
         }
+
+        // Always set the active file to the one that was just opened
+        console.log('Setting active file to:', data.fileName);
         setActiveFile(data.fileName);
       } else {
         console.warn('Received file data without fileName');
@@ -316,9 +374,12 @@ const App: React.FC = () => {
 
       // If this was a new file, update the file name in openFiles
       if (activeFile.startsWith('new-file-')) {
+        // Create a new array with the updated file name
         const updatedOpenFiles = openFiles.map(file =>
           file === activeFile ? data.filePath : file
         );
+
+        // Update the state
         setOpenFiles(updatedOpenFiles);
         setActiveFile(data.filePath);
       }
@@ -328,9 +389,35 @@ const App: React.FC = () => {
     };
 
     // Đăng ký các listener
-    window.electron.ipcRenderer.on('file-opened', handleFileOpened);
-    window.electron.ipcRenderer.on('file-content', handleFileOpened); // Thêm listener cho 'file-content'
+    console.log('Registering event listeners');
+
+    // Listener for file-opened event
+    window.electron.ipcRenderer.on('file-opened', (event, data) => {
+      console.log('file-opened event received in wrapper:', data);
+      handleFileOpened(event, data);
+
+      // If the file has a path, update the selected folder
+      if (data.filePath) {
+        const folderPath = data.filePath.split('\\').slice(0, -1).join('\\');
+        if (folderPath) {
+          setSelectedFolder(folderPath);
+        }
+      }
+    });
+
+    // Listener for file-content event
+    window.electron.ipcRenderer.on('file-content', handleFileOpened);
+
+    // Listener for file-saved event
     window.electron.ipcRenderer.on('file-saved', handleFileSaved);
+
+    // Listener for folder-structure event
+    window.electron.ipcRenderer.on('folder-structure', (_event, data) => {
+      console.log('folder-structure event received:', data);
+      if (data.name) {
+        setSelectedFolder(data.name);
+      }
+    });
 
     // Thêm log để debug
     console.log('Registered IPC event listeners');
@@ -340,8 +427,9 @@ const App: React.FC = () => {
       window.electron.ipcRenderer.removeAllListeners('file-opened');
       window.electron.ipcRenderer.removeAllListeners('file-content');
       window.electron.ipcRenderer.removeAllListeners('file-saved');
+      window.electron.ipcRenderer.removeAllListeners('folder-structure');
     };
-  }, [openFiles, modifiedFiles, activeFile, currentContent, originalContent]);
+  }, []); // Remove dependencies to prevent re-registering listeners
 
   useEffect(() => {
     setContentSize(isRightSidebarCollapsed ? 0 : defaultContentSize);
@@ -468,7 +556,7 @@ const App: React.FC = () => {
             <Search className="w-4 h-4 mr-2" />
             <input
               type="text"
-              placeholder="testnestjs"
+              placeholder={selectedFolder || 'Search in workspace'}
               className="bg-transparent border-none outline-none text-sm w-full"
             />
           </div>
@@ -499,7 +587,7 @@ const App: React.FC = () => {
                 <span>...</span>
               </div>
               <div className="flex items-center p-2 text-sm">
-                <span className="font-semibold">text-editor-app</span>
+                <span className="font-semibold">{selectedFolder || 'No folder opened'}</span>
                 <span className="ml-auto text-xs">▾</span>
               </div>
               <ContentArea
@@ -518,28 +606,35 @@ const App: React.FC = () => {
             className="bg-[#1e1e1e] flex flex-col"
           >
             {/* File Tabs - Đã di chuyển vào đây */}
-            <div className="flex bg-[#252526] h-[35px] text-sm overflow-x-auto">
-              {openFiles.map(file => (
-                <div
-                  key={file}
-                  className={`flex items-center px-3 py-1 border-r border-[#3c3c3c] cursor-pointer ${activeFile === file ? 'bg-[#1e1e1e]' : 'bg-[#2d2d2d]'}`}
-                  onClick={() => {
-                    setActiveFile(file);
-                    loadFileContent(file);
-                  }}
-                >
-                  <span className={`${modifiedFiles.includes(file) ? 'text-blue-400' : file === 'electron-dev.js' ? 'text-yellow-500' : file === 'package.json' ? 'text-orange-400' : 'text-gray-400'} mr-2`}>•</span>
-                  <span>{file}</span>
-                  <span
-                    className="ml-2 text-gray-500 hover:text-white"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCloseFile(file);
+            {openFiles.length > 0 && (
+              <div className="flex bg-[#252526] h-[35px] text-sm overflow-x-auto">
+                {openFiles.map(file => (
+                  <div
+                    key={file}
+                    className={`flex items-center px-3 py-1 border-r border-[#3c3c3c] cursor-pointer ${activeFile === file ? 'bg-[#1e1e1e]' : 'bg-[#2d2d2d]'}`}
+                    onClick={() => {
+                      console.log('File tab clicked:', file);
+
+                      // Set this file as the active file
+                      setActiveFile(file);
+
+                      // Load the file content
+                      loadFileContent(file);
                     }}
-                  >×</span>
-                </div>
-              ))}
-            </div>
+                  >
+                    <span className={`${modifiedFiles.includes(file) ? 'text-blue-400' : 'text-gray-400'} mr-2`}>•</span>
+                    <span>{file}</span>
+                    <span
+                      className="ml-2 text-gray-500 hover:text-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCloseFile(file);
+                      }}
+                    >×</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex-1">
               <Editor

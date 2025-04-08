@@ -319,32 +319,44 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
     return (
         <div className="flex flex-col h-full">
             <div className="flex-1 bg-[#1e1e1e]">
-                <MonacoEditor
-                    height="calc(100vh - 30px - 22px - 35px - 32px - 35px)"
-                    defaultLanguage="text"
-                    value={currentContent || editorContent}
-                    theme="vs-dark"
-                    onChange={handleEditorChange}
-                    onMount={handleEditorDidMount}
-                    language={language}
-                    options={{
-                        minimap: { enabled: true, scale: 0.8, side: 'right' },
-                        fontSize: 14,
-                        wordWrap: 'on',
-                        lineNumbers: 'on',
-                        renderLineHighlight: 'all',
-                        automaticLayout: true,
-                        scrollBeyondLastLine: false,
-                        cursorBlinking: 'smooth',
-                        cursorSmoothCaretAnimation: 'on',
-                        scrollbar: {
-                            vertical: 'visible',
-                            horizontal: 'visible',
-                            verticalScrollbarSize: 10,
-                            horizontalScrollbarSize: 10
-                        }
-                    }}
-                />
+                {(currentContent !== undefined && currentContent !== '') || (editorContent && editorContent !== '') ? (
+                    <MonacoEditor
+                        height="calc(100vh - 30px - 22px - 35px - 32px - 35px)"
+                        defaultLanguage="text"
+                        value={currentContent || editorContent}
+                        theme="vs-dark"
+                        onChange={handleEditorChange}
+                        onMount={handleEditorDidMount}
+                        language={language}
+                        options={{
+                            minimap: { enabled: true, scale: 0.8, side: 'right' },
+                            fontSize: 14,
+                            wordWrap: 'on',
+                            lineNumbers: 'on',
+                            renderLineHighlight: 'all',
+                            automaticLayout: true,
+                            scrollBeyondLastLine: false,
+                            cursorBlinking: 'smooth',
+                            cursorSmoothCaretAnimation: 'on',
+                            scrollbar: {
+                                vertical: 'visible',
+                                horizontal: 'visible',
+                                verticalScrollbarSize: 10,
+                                horizontalScrollbarSize: 10
+                            }
+                        }}
+                    />
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <div className="text-xl mb-4">Welcome to Text Editor</div>
+                        <div className="text-sm mb-2">Open a file from the explorer or create a new file to get started</div>
+                        <div className="text-xs">
+                            <span className="text-blue-400">Ctrl+N</span> - New File |
+                            <span className="text-blue-400">Ctrl+O</span> - Open File |
+                            <span className="text-blue-400">Ctrl+S</span> - Save File
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
