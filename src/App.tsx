@@ -218,8 +218,14 @@ const App: React.FC = () => {
     // Update the openFiles state
     setOpenFiles(newOpenFiles);
 
+    // If there are no more files open, clear the active file to show welcome screen
+    if (newOpenFiles.length === 0) {
+      console.log('No more files open, showing welcome screen');
+      setActiveFile('');
+      setCurrentContent('');
+    }
     // If the closed file was the active file, set a new active file
-    if (activeFile === fileName && newOpenFiles.length > 0) {
+    else if (activeFile === fileName) {
       // Determine which file to activate next
       let nextActiveFileIndex;
 
@@ -644,12 +650,34 @@ const App: React.FC = () => {
             )}
 
             <div className="flex-1">
-              <Editor
-                loadFileContent={loadFileContent}
-                updateContent={updateCurrentContent}
-                onStatsChange={updateEditorStats}
-                currentContent={currentContent}
-              />
+              {openFiles.length > 0 ? (
+                <Editor
+                  loadFileContent={loadFileContent}
+                  updateContent={updateCurrentContent}
+                  onStatsChange={updateEditorStats}
+                  currentContent={currentContent}
+                  activeFile={activeFile}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                  <div className="text-xl mb-4">Welcome to Text Editor</div>
+                  <div className="text-sm mb-4">Open a folder or file to get started</div>
+                  <div className="text-sm mb-6">
+                    <div className="flex items-center justify-center mb-2">
+                      <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+N</span>
+                      <span>Create a new file</span>
+                    </div>
+                    <div className="flex items-center justify-center mb-2">
+                      <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+O</span>
+                      <span>Open a file</span>
+                    </div>
+                    <div className="flex items-center justify-center">
+                      <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+S</span>
+                      <span>Save current file</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>

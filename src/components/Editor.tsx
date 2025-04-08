@@ -7,12 +7,14 @@ interface EditorProps {
     updateContent: (content: string) => void;
     onStatsChange?: (stats: any) => void;
     currentContent?: string; // Add prop for current content
+    activeFile?: string; // Add prop for active file
 }
 
-const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStatsChange, currentContent }) => {
+const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStatsChange, currentContent, activeFile: propActiveFile }) => {
     const [editor, setEditor] = useState<any>(null);
     const [openFiles, setOpenFiles] = useState<string[]>([]);
-    const [activeFile, setActiveFile] = useState<string | null>(null);
+    // Use the activeFile prop from parent if available, otherwise use local state
+    const [activeFile, setActiveFile] = useState<string | null>(propActiveFile || null);
     // Use the currentContent prop from parent instead of maintaining our own state
     const [editorContent, setEditorContent] = useState<string>(currentContent || '');
     const [language, setLanguage] = useState<string>('text');
@@ -41,6 +43,11 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
             setEditorContent(currentContent);
         }
     }, [currentContent]);
+
+    // Update activeFile when propActiveFile changes
+    useEffect(() => {
+        setActiveFile(propActiveFile || null);
+    }, [propActiveFile]);
 
     // State cho StatusBar component - để tương thích với component StatusBar
     const [statusBarStats] = useState({
