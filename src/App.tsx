@@ -323,6 +323,7 @@ const App: React.FC = () => {
 
       if (data.fileName) {
         // Check if the file is already in the openFiles array
+        console.log('Current openFiles array:', openFiles);
         const fileIndex = openFiles.findIndex(file => file === data.fileName);
 
         if (fileIndex === -1) {
@@ -341,6 +342,7 @@ const App: React.FC = () => {
 
           // Update the state
           setOpenFiles(newOpenFiles);
+          console.log('Updated openFiles array:', newOpenFiles);
         }
 
         // Always set the active file to the one that was just opened
@@ -429,13 +431,18 @@ const App: React.FC = () => {
       window.electron.ipcRenderer.removeAllListeners('file-saved');
       window.electron.ipcRenderer.removeAllListeners('folder-structure');
     };
-  }, []); // Remove dependencies to prevent re-registering listeners
+  }, [openFiles, modifiedFiles, activeFile, currentContent]); // Include dependencies to ensure handlers have access to latest state
 
   useEffect(() => {
     setContentSize(isRightSidebarCollapsed ? 0 : defaultContentSize);
   }, [isRightSidebarCollapsed]);
 
   // We've moved the file limit logic to the main handleFileOpened function
+
+  // Add a useEffect to log file tabs information
+  useEffect(() => {
+    console.log('File tabs updated, current openFiles:', openFiles);
+  }, [openFiles]);
 
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-white">
@@ -605,7 +612,7 @@ const App: React.FC = () => {
             defaultSize={100 - contentSize} minSize={30}
             className="bg-[#1e1e1e] flex flex-col"
           >
-            {/* File Tabs - Đã di chuyển vào đây */}
+            {/* Add a useEffect to log file tabs info */}
             {openFiles.length > 0 && (
               <div className="flex bg-[#252526] h-[35px] text-sm overflow-x-auto">
                 {openFiles.map(file => (
