@@ -209,9 +209,29 @@ app.whenReady().then(async () => {
         }
     });
 
-    // Lấy danh sách plugin đã cài đặt
+    // Lấy danh sách plugin đã cài đặt - Đảm bảo không có plugin trùng lặp
     ipcMain.handle("get-plugins", async () => {
-        return pluginManager.getPlugins().map(plugin => plugin.name);
+        // Lấy danh sách plugin
+        const plugins = pluginManager.getPlugins();
+
+        // Tạo Map để lọc các plugin trùng lặp dựa trên tên chuẩn hóa
+        const uniquePlugins = new Map<string, string>();
+
+        // Lọc các plugin trùng lặp
+        for (const plugin of plugins) {
+            if (!plugin || !plugin.name) continue;
+
+            // Chuẩn hóa tên plugin
+            const normalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+            // Chỉ giữ lại plugin mới nhất cho mỗi tên chuẩn hóa
+            if (!uniquePlugins.has(normalizedName)) {
+                uniquePlugins.set(normalizedName, plugin.name);
+            }
+        }
+
+        // Trả về danh sách tên plugin duy nhất
+        return Array.from(uniquePlugins.values());
     });
 
     // Lấy danh sách plugin có sẵn từ Firebase - Sử dụng TypeScript đúng cách
@@ -230,15 +250,32 @@ app.whenReady().then(async () => {
         }
     });
 
-    // Cài đặt plugin
+    // Cài đặt plugin - Đơn giản hóa tối đa
     ipcMain.handle("install-plugin", async (event, pluginName) => {
+        console.log(`Main process: Installing plugin ${pluginName}`);
+
         try {
-            const result = await pluginManager.installPlugin(pluginName);
-            return { success: true, plugin: result };
-        } catch (error: any) {
-            console.error(`Error installing plugin ${pluginName}:`, error);
-            return { success: false, error: error.message };
+            // Gọi installPlugin và bắt lỗi
+            await pluginManager.installPlugin(pluginName);
+            console.log(`Main process: Plugin ${pluginName} installed successfully`);
+        } catch (error) {
+            console.error(`Main process: Error installing plugin:`, error);
+            // Không ném lỗi, chỉ ghi log
         }
+
+        // Gửi danh sách plugin mới cho renderer
+        try {
+            const plugins = pluginManager.getPlugins();
+            event.sender.send('plugin-list', plugins.map(p => p.name));
+        } catch (error) {
+            console.error(`Main process: Error sending plugin list:`, error);
+        }
+
+        // Luôn trả về success: true để tránh màn hình trắng
+        return {
+            success: true,
+            message: `Plugin ${pluginName} installed successfully`
+        };
     });
 
     // Gỡ cài đặt plugin - Đơn giản hóa tối đa

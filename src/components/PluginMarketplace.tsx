@@ -124,50 +124,41 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
 
       // Lọc các plugin trùng lặp (chỉ giữ lại phiên bản mới nhất)
       const uniquePlugins = new Map<string, PluginInfo>();
-      const processedNames = new Set<string>(); // Theo dõi các tên đã xử lý
 
       console.log(`Processing ${enhancedPlugins.length} plugins for uniqueness`);
 
-      // Xử lý từng plugin để lọc các plugin trùng lặp
+      // Bước 1: Tạo danh sách các tên chuẩn hóa và plugin tương ứng
+      const normalizedNameMap = new Map<string, string[]>();
+
       for (const plugin of enhancedPlugins) {
-        // Kiểm tra plugin có hợp lệ không
-        if (!plugin || !plugin.name) {
-          console.error('Invalid plugin in uniquePlugins processing:', plugin);
-          continue;
+        if (!plugin || !plugin.name) continue;
+
+        const normalizedName = typeof plugin.name === 'string' ?
+          plugin.name.replace(/(-\d+\.\d+\.\d+)$/, '') :
+          String(plugin.name);
+
+        if (!normalizedNameMap.has(normalizedName)) {
+          normalizedNameMap.set(normalizedName, []);
         }
 
-        try {
-          // Chuẩn hóa tên plugin (loại bỏ phiên bản nếu có)
-          const normalizedName = typeof plugin.name === 'string' ?
-            plugin.name.replace(/(-\d+\.\d+\.\d+)$/, '') :
-            String(plugin.name);
+        normalizedNameMap.get(normalizedName)!.push(plugin.name);
+      }
 
-          // Kiểm tra xem đã xử lý tên này chưa
-          if (processedNames.has(normalizedName) || processedNames.has(plugin.name)) {
-            console.log(`Skipping duplicate plugin: ${plugin.name} (normalized: ${normalizedName})`);
-            continue;
-          }
+      console.log('Normalized name mapping:', Object.fromEntries(normalizedNameMap));
 
-          // Đánh dấu đã xử lý
-          processedNames.add(normalizedName);
-          processedNames.add(plugin.name);
+      // Bước 2: Chỉ giữ lại một plugin cho mỗi tên chuẩn hóa
+      for (const [normalizedName, pluginNames] of normalizedNameMap.entries()) {
+        // Sắp xếp các tên theo thứ tự phiên bản
+        pluginNames.sort((a, b) => b.localeCompare(a)); // Phiên bản mới nhất lên đầu
 
-          // Chỉ giữ lại plugin mới nhất cho mỗi tên chuẩn hóa
-          if (!uniquePlugins.has(normalizedName)) {
-            // Nếu chưa có plugin này, thêm vào
-            console.log(`Adding plugin to unique list: ${plugin.name}`);
-            uniquePlugins.set(normalizedName, plugin);
-          } else if (uniquePlugins.get(normalizedName) &&
-                     typeof plugin.name === 'string' &&
-                     typeof uniquePlugins.get(normalizedName)!.name === 'string' &&
-                     plugin.name.localeCompare(uniquePlugins.get(normalizedName)!.name) > 0) {
-            // Nếu đã có plugin này nhưng phiên bản mới hơn, thay thế
-            console.log(`Replacing plugin with newer version: ${plugin.name}`);
-            uniquePlugins.set(normalizedName, plugin);
-          }
-        } catch (error) {
-          console.error('Error processing plugin for uniquePlugins:', error);
-          // Bỏ qua plugin gây lỗi
+        // Lấy plugin đầu tiên (phiên bản mới nhất)
+        const selectedPluginName = pluginNames[0];
+        console.log(`Selected plugin for ${normalizedName}: ${selectedPluginName}`);
+
+        // Tìm plugin tương ứng trong danh sách gốc
+        const selectedPlugin = enhancedPlugins.find(p => p.name === selectedPluginName);
+        if (selectedPlugin) {
+          uniquePlugins.set(normalizedName, selectedPlugin);
         }
       }
 
