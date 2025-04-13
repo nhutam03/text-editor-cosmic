@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('electron', {
         },
         removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
         getPlugins: () => ipcRenderer.invoke("get-plugins"),
+        getAvailablePlugins: () => ipcRenderer.invoke("get-available-plugins"),
+        installPlugin: (pluginName) => ipcRenderer.invoke("install-plugin", pluginName),
+        uninstallPlugin: (pluginName) => ipcRenderer.invoke("uninstall-plugin", pluginName),
         getPlugin: (plugin) => ipcRenderer.invoke("getPlugin", plugin),
     },
 

@@ -2,17 +2,16 @@ import { app, BrowserWindow, dialog, ipcMain, SaveDialogReturnValue } from 'elec
 import path from 'path';
 import fs from 'fs';
 import { OpenDialogReturnValue } from 'electron';
-import net from 'net';
+import { PluginManager } from './src/plugin/PluginManager';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 let selectedFolder: string | null = null;
 let mainWindow: BrowserWindow | null = null;
-interface Plugin {
-    name: string;
-    socket: net.Socket;
-}
-
-const plugins: Plugin[] = [];
-const PORT = 5000;
+let pluginManager: PluginManager;
+const PORT = process.env.VITE_PLUGIN_PORT ? parseInt(process.env.VITE_PLUGIN_PORT) : 5000;
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -35,46 +34,31 @@ function createWindow() {
     }
     return mainWindow;
 }
-function startSocketServer() {
-    const server = net.createServer((socket) => {
-        console.log("Plugin connected");
 
-        socket.on("data", (data) => {
-            const message = JSON.parse(data.toString());
-            if (message.type === "register-plugin") {
-                plugins.push({ name: message.name, socket });
-                console.log(`Plugin registered: ${message.name}`);
-                mainWindow?.webContents.send("plugin-list", plugins.map((p) => p.name));
-            }
-        });
+async function initializePluginManager() {
+    // Khởi tạo Plugin Manager
+    pluginManager = new PluginManager(PORT);
 
-        socket.on("end", () => {
-            const index = plugins.findIndex((p) => p.socket === socket);
-            if (index !== -1) {
-                console.log(`Plugin disconnected: ${plugins[index].name}`);
-                plugins.splice(index, 1);
-                mainWindow?.webContents.send("plugin-list", plugins.map((p) => p.name));
-            }
-        });
-
-        socket.on("error", (err) => {
-            console.error("Socket error:", err);
-        });
+    // Đăng ký callback khi danh sách plugin thay đổi
+    pluginManager.setPluginListChangedCallback((plugins) => {
+        if (mainWindow) {
+            mainWindow.webContents.send('plugin-list', plugins);
+        }
     });
 
-    server.listen(PORT, "localhost", () => {
-        console.log(`Core socket server running on port ${PORT}`);
-    });
+    // Khởi động Plugin Manager
+    await pluginManager.start();
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     createWindow();
-    startSocketServer();
+    await initializePluginManager();
+
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
 
-    // // Handler cho load dictionary
+    // Handler cho load dictionary
     ipcMain.handle('load-dictionary', async () => {
         const dictPath = path.join(__dirname, 'public', 'en_US.dic');
         try {
@@ -86,16 +70,23 @@ app.whenReady().then(() => {
         }
     });
 
-    // Xử lý mở thư mục
+    // Xử lý mở hộp thoại chọn thư mục
     ipcMain.on('open-folder-request', async (event) => {
-        const result = await dialog.showOpenDialog({
-            properties: ['openDirectory']
-        }) as unknown as OpenDialogReturnValue;
+        try {
+            const result = await dialog.showOpenDialog({
+                properties: ['openDirectory']
+            }) as unknown as OpenDialogReturnValue;
 
-        if (!result.canceled && result.filePaths.length > 0) {
-            selectedFolder = result.filePaths[0];
-            const structure = readFolderStructure(selectedFolder);
-            event.sender.send('folder-structure', { ...structure });
+            if (!result.canceled && result.filePaths.length > 0) {
+                const folderPath = result.filePaths[0];
+                selectedFolder = folderPath;
+
+                // Đọc cấu trúc thư mục
+                const folderStructure = getFolderStructure(folderPath);
+                event.sender.send('folder-structure', folderStructure);
+            }
+        } catch (error: any) {
+            console.error('Error opening folder:', error);
         }
     });
 
@@ -155,79 +146,48 @@ app.whenReady().then(() => {
         }
     });
 
-
-    // Xử lý lưu file với hộp thoại
-    ipcMain.on('save-file-request', async (event, { filePath, content }: { filePath: string, content: string }) => {
-        console.log('Received save-file-request for:', filePath);
+    // Handle saving a file
+    ipcMain.on('save-file', async (event, data: { content: string, fileName: string }) => {
         try {
-            // Determine default extension based on file content or name
-            let defaultExtension = 'txt';
-            if (filePath) {
-                const ext = path.extname(filePath).replace('.', '');
-                if (ext) defaultExtension = ext;
+            if (!selectedFolder) {
+                throw new Error('No folder selected');
             }
+            const { content, fileName } = data;
+            const filePath = path.join(selectedFolder, fileName);
+            fs.writeFileSync(filePath, content, 'utf-8');
+            event.sender.send('file-saved', { success: true, filePath });
+        } catch (error: any) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to save file';
+            event.sender.send('file-saved', { error: errorMessage });
+        }
+    });
 
+    // Handle save file dialog
+    ipcMain.on('save-file-request', async (event, data: { filePath: string, content: string }) => {
+        try {
+            const { filePath, content } = data;
             const result = await dialog.showSaveDialog({
-                defaultPath: filePath.startsWith('new-file-') ? 'Untitled.txt' : filePath,
+                defaultPath: filePath,
                 filters: [
-                    { name: 'Text Files', extensions: ['txt', 'md'] },
-                    { name: 'JavaScript', extensions: ['js', 'jsx'] },
-                    { name: 'TypeScript', extensions: ['ts', 'tsx'] },
-                    { name: 'HTML', extensions: ['html', 'htm'] },
-                    { name: 'CSS', extensions: ['css'] },
-                    { name: 'JSON', extensions: ['json'] },
+                    { name: 'Text Files', extensions: ['txt', 'md', 'js', 'ts', 'html', 'css', 'json'] },
                     { name: 'All Files', extensions: ['*'] }
-                ],
+                ]
             }) as unknown as SaveDialogReturnValue;
 
             if (!result.canceled && result.filePath) {
-                const absolutePath = result.filePath;
-                fs.writeFileSync(absolutePath, content, 'utf-8');
-                const fileName = path.basename(absolutePath);
-                selectedFolder = path.dirname(absolutePath); // Update selected folder
-                event.sender.send('file-saved', { success: true, filePath: fileName, error: undefined });
+                fs.writeFileSync(result.filePath, content, 'utf-8');
+                selectedFolder = path.dirname(result.filePath);
+                const fileName = path.basename(result.filePath);
+                event.sender.send('file-saved', { success: true, filePath: result.filePath, fileName });
             } else {
-                event.sender.send('file-saved', { success: false, filePath, error: 'Save cancelled by user' });
+                event.sender.send('file-saved', { error: 'Save operation canceled' });
             }
         } catch (error: any) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to save file';
-            event.sender.send('file-saved', { success: false, filePath, error: errorMessage });
+            event.sender.send('file-saved', { error: errorMessage });
         }
     });
 
-    // Xử lý lưu file trực tiếp (không hiển thị hộp thoại)
-    ipcMain.on('save-file', async (event, { content, fileName }: { content: string, fileName: string }) => {
-        console.log('Received save-file request for:', fileName, 'Content length:', content.length);
-        try {
-            if (!selectedFolder) {
-                // Nếu chưa có thư mục được chọn, hiển thị hộp thoại save
-                const result = await dialog.showSaveDialog({
-                    defaultPath: fileName || 'Untitled.txt',
-                    filters: [{ name: 'Text Files', extensions: ['txt', 'md', 'js', 'ts', 'html', 'css', 'json'] }],
-                }) as unknown as SaveDialogReturnValue;
-
-                if (!result.canceled && result.filePath) {
-                    const absolutePath = result.filePath;
-                    fs.writeFileSync(absolutePath, content, 'utf-8');
-                    const savedFileName = path.basename(absolutePath);
-                    selectedFolder = path.dirname(absolutePath);
-                    event.sender.send('file-saved', { success: true, filePath: savedFileName, error: undefined });
-                } else {
-                    event.sender.send('file-saved', { success: false, filePath: fileName, error: 'Save cancelled by user' });
-                }
-            } else {
-                // Nếu đã có thư mục được chọn, lưu trực tiếp vào thư mục đó
-                const absolutePath = path.join(selectedFolder, fileName);
-                console.log('Saving file to:', absolutePath);
-                fs.writeFileSync(absolutePath, content, 'utf-8');
-                event.sender.send('file-saved', { success: true, filePath: fileName, error: undefined });
-                console.log('File saved successfully:', fileName);
-            }
-        } catch (error: any) {
-            const errorMessage = error instanceof Error ? error.message : 'Failed to save file';
-            event.sender.send('file-saved', { success: false, filePath: fileName, error: errorMessage });
-        }
-    });
     // Handle creating a new file
     ipcMain.on('create-new-file-request', async (event, fileName: string) => {
         try {
@@ -247,98 +207,98 @@ app.whenReady().then(() => {
         }
     });
 
-    // Helper function to read folder structure recursively
-    function readFolderStructure(folderPath: string) {
-        const items = fs.readdirSync(folderPath, { withFileTypes: true });
-
-        return {
-            name: path.basename(folderPath),
-            type: "directory",
-            children: items.map(item => ({
-                name: item.name,
-                type: item.isDirectory() ? 'directory' : 'file'
-            })),
-
-        };
-    }
-
-    // // Đăng ký plugin
-    // kernel.registerPlugin(pdfExportPlugin.name, pdfExportPlugin);
-
-    // // IPC để gọi plugin từ renderer
-    // ipcMain.handle("export-pdf", async (_event, content: string) => {
-    //     if (!mainWindow) {
-    //         console.error("mainWindow is null");
-    //         return null;
-    //     }
-    //     console.log("Opening save dialog for PDF...");
-    //     const result = await dialog.showSaveDialog(mainWindow, {
-    //         title: "Save PDF",
-    //         defaultPath: "document.pdf",
-    //         filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-    //     }) as unknown as SaveDialogReturnValue;
-    //     console.log("Save dialog result:", result);
-
-    //     if (result.canceled || !result.filePath) {
-    //         console.log("Save dialog canceled or no file path selected");
-    //         return null;
-    //     }
-    //     try {
-    //         const pdfPath = await kernel.executePlugin("pdf-export", content, result.filePath);
-    //         console.log("PDF exported successfully:", pdfPath);
-    //         return pdfPath;
-    //     } catch (error) {
-    //         console.error("Error executing pdf-export plugin:", error);
-    //         return null;
-    //     }
-    // });
-
-    // // Thêm IPC handler để lấy danh sách plugin
-    // ipcMain.handle("get-plugins", async () => {
-    //     return kernel.getPlugins();
-    // });
+    // Lấy danh sách plugin đã cài đặt
     ipcMain.handle("get-plugins", async () => {
-        return plugins.map((p) => p.name);
+        return pluginManager.getPlugins().map(plugin => plugin.name);
     });
 
+    // Lấy danh sách plugin có sẵn từ Firebase
+    ipcMain.handle("get-available-plugins", async () => {
+        return await pluginManager.getAvailablePlugins();
+    });
+
+    // Cài đặt plugin
+    ipcMain.handle("install-plugin", async (event, pluginName) => {
+        try {
+            const result = await pluginManager.installPlugin(pluginName);
+            return { success: true, plugin: result };
+        } catch (error: any) {
+            console.error(`Error installing plugin ${pluginName}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Gỡ cài đặt plugin
+    ipcMain.handle("uninstall-plugin", async (event, pluginName) => {
+        try {
+            const result = await pluginManager.uninstallPlugin(pluginName);
+            return { success: result };
+        } catch (error: any) {
+            console.error(`Error uninstalling plugin ${pluginName}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Áp dụng plugin
     ipcMain.on("apply-plugin", async (event, pluginName: string, content: string) => {
-        const plugin = plugins.find((p) => p.name === pluginName);
-        if (plugin) {
+        try {
             // Hiển thị SaveDialog để chọn nơi lưu file
-            // const result = await dialog.showSaveDialog(mainWindow!, {
-            //     title: "Save PDF",
-            //     defaultPath: "document.pdf",
-            //     filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-            // });
             const result = await dialog.showSaveDialog(mainWindow!, {
-                    title: "Save PDF",
-                    defaultPath: "document.pdf",
-                    filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-                }) as unknown as SaveDialogReturnValue;
+                title: "Save Output",
+                defaultPath: "output.pdf",
+                filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+            }) as unknown as SaveDialogReturnValue;
 
             if (!result.canceled && result.filePath) {
-                // Gửi yêu cầu tới plugin với nội dung và đường dẫn file
-                plugin.socket.write(JSON.stringify({
-                    type: "execute-plugin",
-                    content,
-                    filePath: result.filePath,
-                }));
-
-                // Lắng nghe phản hồi từ plugin
-                plugin.socket.once("data", (data) => {
-                    const result = JSON.parse(data.toString());
-                    event.reply("plugin-applied", result.message);
-                });
+                try {
+                    // Thực thi plugin
+                    await pluginManager.executePlugin(pluginName, content, result.filePath);
+                    event.reply("plugin-applied", `File exported successfully to ${result.filePath}`);
+                } catch (error: any) {
+                    event.reply("plugin-applied", `Error: ${error.message}`);
+                }
             } else {
-                event.reply("plugin-applied", "PDF export cancelled by user");
+                event.reply("plugin-applied", "Operation cancelled by user");
             }
-        } else {
-            event.reply("plugin-applied", `Plugin ${pluginName} not found`);
+        } catch (error: any) {
+            event.reply("plugin-applied", `Error: ${error.message}`);
         }
     });
 });
 
-
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+    if (process.platform !== 'darwin') {
+        // Dừng Plugin Manager trước khi thoát
+        if (pluginManager) {
+            pluginManager.stop();
+        }
+        app.quit();
+    }
 });
+
+// Hàm đệ quy để đọc cấu trúc thư mục
+function getFolderStructure(folderPath: string) {
+    const name = path.basename(folderPath);
+    const structure: any = {
+        name,
+        type: 'directory',
+        children: []
+    };
+
+    const items = fs.readdirSync(folderPath);
+    for (const item of items) {
+        const itemPath = path.join(folderPath, item);
+        const stats = fs.statSync(itemPath);
+
+        if (stats.isDirectory()) {
+            structure.children.push(getFolderStructure(itemPath));
+        } else {
+            structure.children.push({
+                name: item,
+                type: 'file'
+            });
+        }
+    }
+
+    return structure;
+}

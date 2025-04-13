@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus, MoreHorizontal } from 'lucide-react';
+import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus, MoreHorizontal, Download } from 'lucide-react';
 import { IpcRendererEvent } from 'electron';
 import { Button } from './ui/button';
+import PluginMarketplace from './PluginMarketplace';
 
 interface FolderStructureItem {
     name: string;
@@ -21,6 +22,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     const [plugins, setPlugins] = useState<string[]>([]);
     const [pluginMessage, setPluginMessage] = useState<string | null>(null); // Thông báo từ plugin
     const [showChildren, setShowChildren] = useState<boolean>(true); // Control visibility of children
+    const [showMarketplace, setShowMarketplace] = useState<boolean>(false);
     const renderContent = () => {
         switch (activeTab) {
             case 'explorer':
@@ -83,7 +85,19 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
             case 'extensions':
                 return (
                     <div className="p-2">
-                        <span className="text-white">Extensions</span>
+                        <div className="flex justify-between items-center mb-4">
+                            <span className="text-white font-semibold">Extensions</span>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex items-center gap-1 text-xs"
+                                onClick={() => setShowMarketplace(true)}
+                            >
+                                <Download size={14} />
+                                Browse Extensions
+                            </Button>
+                        </div>
+
                         {plugins.length > 0 ? (
                             <div>
                                 <ul className="mt-2 space-y-2">
@@ -108,7 +122,16 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                                 )}
                             </div>
                         ) : (
-                            <p className="text-white text-sm mt-2">No plugins available</p>
+                            <div className="text-center py-8">
+                                <p className="text-gray-400 mb-4">No extensions installed</p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setShowMarketplace(true)}
+                                >
+                                    Browse Extensions
+                                </Button>
+                            </div>
                         )}
                     </div>
                 );
@@ -261,9 +284,17 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
 
     return (
         <div
-            className="bg-[#252526] h-full overflow-hidden"
+            className="bg-[#252526] h-full overflow-hidden relative"
         >
             {renderContent()}
+            {pluginMessage && (
+                <div className="absolute bottom-4 right-4 bg-gray-800 text-white p-3 rounded shadow-lg">
+                    {pluginMessage}
+                </div>
+            )}
+            {showMarketplace && (
+                <PluginMarketplace onClose={() => setShowMarketplace(false)} />
+            )}
         </div>
     );
 };
