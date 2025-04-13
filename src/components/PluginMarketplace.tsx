@@ -19,6 +19,19 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedPlugin, setSelectedPlugin] = useState<PluginInfo | null>(null);
 
+  // Add effect to log when selectedPlugin changes
+  useEffect(() => {
+    if (selectedPlugin) {
+      console.log('Selected plugin changed:', {
+        name: selectedPlugin.name,
+        installed: selectedPlugin.installed,
+        displayName: selectedPlugin.displayName
+      });
+    } else {
+      console.log('Selected plugin cleared');
+    }
+  }, [selectedPlugin]);
+
   useEffect(() => {
     loadPlugins();
   }, []);
@@ -354,15 +367,21 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
                       <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                         INSTALLED
                       </div>
-                      {installedPlugins.map((plugin) => (
-                        <ExtensionCard
-                          key={plugin.name}
-                          plugin={plugin}
-                          onClick={() => setSelectedPlugin(plugin)}
-                          onUninstall={() => handleUninstall(plugin.name)}
-                          installing={installing === plugin.name}
-                        />
-                      ))}
+                      {installedPlugins.map((plugin) => {
+                        console.log(`Rendering installed plugin card: ${plugin.name}`);
+                        return (
+                          <ExtensionCard
+                            key={plugin.name}
+                            plugin={plugin}
+                            onClick={() => {
+                              console.log(`Installed plugin clicked: ${plugin.name}`);
+                              setSelectedPlugin(plugin);
+                            }}
+                            onUninstall={() => handleUninstall(plugin.name)}
+                            installing={installing === plugin.name}
+                          />
+                        );
+                      })}
                     </div>
                   )}
 
@@ -372,15 +391,21 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
                       <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4">
                         RECOMMENDED
                       </div>
-                      {notInstalledPlugins.map((plugin) => (
-                        <ExtensionCard
-                          key={plugin.name}
-                          plugin={plugin}
-                          onClick={() => setSelectedPlugin(plugin)}
-                          onInstall={() => handleInstall(plugin.name)}
-                          installing={installing === plugin.name}
-                        />
-                      ))}
+                      {notInstalledPlugins.map((plugin) => {
+                        console.log(`Rendering not installed plugin card: ${plugin.name}`);
+                        return (
+                          <ExtensionCard
+                            key={plugin.name}
+                            plugin={plugin}
+                            onClick={() => {
+                              console.log(`Not installed plugin clicked: ${plugin.name}`);
+                              setSelectedPlugin(plugin);
+                            }}
+                            onInstall={() => handleInstall(plugin.name)}
+                            installing={installing === plugin.name}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </div>

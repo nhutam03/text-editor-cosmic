@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus, MoreHorizontal, Download, Search } from 'lucide-react';
+import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus, MoreHorizontal, Download, Search, X } from 'lucide-react';
 import { IpcRendererEvent } from 'electron';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -26,6 +26,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     const [showChildren, setShowChildren] = useState<boolean>(true); // Control visibility of children
     const [showMarketplace, setShowMarketplace] = useState<boolean>(false);
     const [loadingAvailablePlugins, setLoadingAvailablePlugins] = useState<boolean>(false);
+    const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null); // Store selected plugin for details view
     const renderContent = () => {
         switch (activeTab) {
             case 'explorer':
@@ -111,6 +112,62 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
 
                         {/* Extensions content */}
                         <div className="flex-1 overflow-y-auto p-2">
+                            {/* Plugin details view - shown when a plugin is selected */}
+                            {selectedPlugin && (
+                                <div className="mb-4 p-3 bg-[#2d2d2d] rounded border border-gray-700">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <h2 className="text-lg font-semibold">{selectedPlugin}</h2>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0"
+                                            onClick={() => setSelectedPlugin(null)}
+                                        >
+                                            <X size={16} />
+                                        </Button>
+                                    </div>
+
+                                    <div className="text-sm text-gray-300 mb-3">
+                                        {selectedPlugin === "pdf-export" ?
+                                            "Export your documents to PDF format with support for Vietnamese characters." :
+                                            `This is the ${selectedPlugin} plugin for the text editor.`
+                                        }
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                                        <div>
+                                            <span className="text-gray-400">Version:</span> 1.0.0
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-400">Author:</span> Text Editor Team
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        {selectedPlugin === "pdf-export" && (
+                                            <Button
+                                                variant="default"
+                                                size="sm"
+                                                className="text-xs"
+                                                onClick={() => handleApplyPlugin(selectedPlugin)}
+                                            >
+                                                Apply
+                                            </Button>
+                                        )}
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            className="text-xs"
+                                            onClick={() => {
+                                                handleUninstallPlugin(selectedPlugin);
+                                                setSelectedPlugin(null);
+                                            }}
+                                        >
+                                            Uninstall
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                             {/* Installed extensions section */}
                             <div className="mb-4">
                                 <div className="flex items-center justify-between">
@@ -121,7 +178,14 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                                 {plugins.length > 0 ? (
                                     <div className="space-y-1">
                                         {plugins.map((plugin) => (
-                                            <div key={plugin} className="flex items-center justify-between p-2 hover:bg-[#2a2d2e] rounded cursor-pointer">
+                                            <div
+                                                key={plugin}
+                                                className={`flex items-center justify-between p-2 hover:bg-[#2a2d2e] rounded cursor-pointer ${selectedPlugin === plugin ? 'bg-[#37373d]' : ''}`}
+                                                onClick={() => {
+                                                    console.log(`Plugin clicked: ${plugin}`);
+                                                    setSelectedPlugin(selectedPlugin === plugin ? null : plugin);
+                                                }}
+                                            >
                                                 <div>
                                                     <div className="font-medium text-sm">{plugin}</div>
                                                     <div className="text-xs text-gray-400">Text Editor Team</div>
@@ -132,7 +196,10 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                                                             variant="ghost"
                                                             size="sm"
                                                             className="h-6 px-2 text-xs mr-2"
-                                                            onClick={() => handleApplyPlugin(plugin)}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation(); // Prevent card click
+                                                                handleApplyPlugin(plugin);
+                                                            }}
                                                         >
                                                             Apply
                                                         </Button>
@@ -141,7 +208,10 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                                                         variant="ghost"
                                                         size="sm"
                                                         className="h-6 px-2 text-xs"
-                                                        onClick={() => handleUninstallPlugin(plugin)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation(); // Prevent card click
+                                                            handleUninstallPlugin(plugin);
+                                                        }}
                                                     >
                                                         Uninstall
                                                     </Button>
@@ -409,6 +479,9 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     };
 
     useEffect(() => {
+        // Reset selected plugin when tab changes
+        setSelectedPlugin(null);
+
         if (activeTab === "extensions") {
             // Tải danh sách plugin đã cài đặt
             window.electron.ipcRenderer.invoke("get-plugins").then((pluginList: string[]) => {

@@ -50,13 +50,24 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
     }
   };
 
+  // Add a debug log for the onClick handler
+  const handleCardClick = () => {
+    console.log(`Card clicked for plugin: ${plugin.name}, installed: ${plugin.installed}`);
+    // Call the onClick handler passed from parent
+    onClick();
+  };
+
   return (
     <div
       className="flex items-start p-2 hover:bg-[#2a2d2e] rounded cursor-pointer group"
-      onClick={onClick}
+      onClick={handleCardClick}
+      data-testid={`extension-card-${plugin.name}`}
     >
       {/* Icon */}
-      <div className="flex-shrink-0 mr-3">
+      <div
+        className="flex-shrink-0 mr-3"
+        data-testid={`extension-card-icon-${plugin.name}`}
+      >
         {plugin.iconUrl && typeof plugin.iconUrl === 'string' ? (
           <img
             src={plugin.iconUrl}
@@ -73,7 +84,10 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-w-0">
+      <div
+        className="flex-1 min-w-0"
+        data-testid={`extension-card-content-${plugin.name}`}
+      >
         <div className="flex items-center justify-between">
           <h3 className="font-medium text-sm truncate">
             {typeof plugin.displayName === 'string' ? plugin.displayName :
@@ -81,7 +95,10 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
           </h3>
 
           {/* Install/Uninstall button */}
-          <div className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div
+            className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => e.stopPropagation()}
+          >
             {installing ? (
               <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500"></div>
             ) : plugin.installed ? (
@@ -90,6 +107,7 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
                 size="sm"
                 className="h-6 px-2 text-xs"
                 onClick={handleUninstallClick}
+                data-testid={`uninstall-button-${plugin.name}`}
               >
                 Uninstall
               </Button>
@@ -99,6 +117,7 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
                 size="sm"
                 className="h-6 px-2 text-xs"
                 onClick={handleInstallClick}
+                data-testid={`install-button-${plugin.name}`}
               >
                 Install
               </Button>

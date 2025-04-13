@@ -16,6 +16,13 @@ const ExtensionDetail: React.FC<ExtensionDetailProps> = ({
   onInstall,
   onUninstall
 }) => {
+  // Add debugging to check if the component is receiving the correct plugin data
+  console.log('ExtensionDetail rendering with plugin:', {
+    name: plugin.name,
+    installed: plugin.installed,
+    displayName: plugin.displayName,
+    description: plugin.description
+  });
   // Generate star rating display
   const renderRating = () => {
     if (!plugin.rating || typeof plugin.rating !== 'number') return null;
