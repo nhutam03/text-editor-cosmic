@@ -3,7 +3,7 @@ import Editor from './components/Editor';
 import Sidebar from './components/Sidebar';
 import ContentArea from './components/ContentArea';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
-import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('explorer');
@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showEditMenu, setShowEditMenu] = useState(false);
   const [showViewMenu, setShowViewMenu] = useState(false);
+  const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [editorStats, setEditorStats] = useState({
     line: 24,
     column: 5,
@@ -172,6 +173,20 @@ const App: React.FC = () => {
     closeAllMenus();
   };
 
+  // Hàm xử lý Export to PDF
+  const handleExportToPdf = () => {
+    if (activeFile && currentContent !== undefined) {
+      console.log('Exporting to PDF:', activeFile, 'Content length:', currentContent.length);
+
+      // Gọi plugin export-to-pdf để xử lý
+      window.electron.ipcRenderer.send('apply-plugin', 'export-to-pdf', currentContent);
+    } else {
+      // Hiển thị thông báo nếu không có file nào đang mở
+      alert('No file is currently open. Please open a file before exporting to PDF.');
+    }
+    closeAllMenus();
+  };
+
   const handleCopy = () => {
     // Sử dụng Clipboard API thay vì document.execCommand
     const selection = window.getSelection();
@@ -300,6 +315,30 @@ const App: React.FC = () => {
       window.removeEventListener('mousedown', handleClickOutside);
     };
   }, [handleSaveFile, handleOpenFile, handleNewFile, toggleTerminal, closeAllMenus]);
+
+  // Lấy danh sách plugins đã cài đặt
+  useEffect(() => {
+    const getInstalledPlugins = async () => {
+      try {
+        const plugins = await window.electron.ipcRenderer.invoke("get-plugins");
+        setInstalledPlugins(plugins || []);
+
+        // Đăng ký lắng nghe sự kiện khi danh sách plugin thay đổi
+        window.electron.ipcRenderer.on("plugin-list", (event, pluginList) => {
+          setInstalledPlugins(pluginList || []);
+        });
+      } catch (error) {
+        console.error("Failed to fetch installed plugins:", error);
+        setInstalledPlugins([]);
+      }
+    };
+
+    getInstalledPlugins();
+
+    return () => {
+      window.electron.ipcRenderer.removeAllListeners("plugin-list");
+    };
+  }, []);
 
   // Lắng nghe sự kiện từ main process
   useEffect(() => {
@@ -487,6 +526,16 @@ const App: React.FC = () => {
                     <Save size={16} className="mr-2" />
                     <span>Save</span>
                   </div>
+                  {/* Chỉ hiển thị Export to PDF khi plugin đã được cài đặt */}
+                  {installedPlugins.includes("export-to-pdf") && (
+                    <div
+                      className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                      onClick={handleExportToPdf}
+                    >
+                      <FileText size={16} className="mr-2" />
+                      <span>Export to PDF</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

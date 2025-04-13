@@ -4,10 +4,22 @@
  */
 
 export interface PluginInfo {
-  name: string;        // Tên plugin
-  version: string;     // Phiên bản plugin
-  description: string; // Mô tả plugin
-  author: string;      // Tác giả plugin
+  name: string;                // Tên plugin
+  displayName?: string;        // Tên hiển thị
+  version: string;             // Phiên bản plugin
+  description: string;         // Mô tả plugin
+  author: string;              // Tác giả plugin
+  publisher?: string;          // Nhà phát hành (có thể giống author)
+  publisherUrl?: string;       // URL của nhà phát hành
+  iconUrl?: string;            // URL của icon plugin
+  downloadCount?: number;      // Số lượt tải
+  rating?: number;             // Đánh giá (0-5)
+  ratingCount?: number;        // Số lượt đánh giá
+  lastUpdated?: string;        // Ngày cập nhật cuối cùng
+  categories?: string[];       // Danh mục
+  tags?: string[];             // Thẻ
+  autoUpdate?: boolean;        // Tự động cập nhật
+  installed?: boolean;         // Đã cài đặt hay chưa
 }
 
 export interface PluginMessage {

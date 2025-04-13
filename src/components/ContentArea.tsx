@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus, MoreHorizontal, Download } from 'lucide-react';
+import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus, MoreHorizontal, Download, Search } from 'lucide-react';
 import { IpcRendererEvent } from 'electron';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import PluginMarketplace from './PluginMarketplace';
 
 interface FolderStructureItem {
@@ -20,9 +21,11 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     const [folderStructure, setFolderStructure] = useState<FolderStructureItem | null>(null); // Store folder/file structure
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
     const [plugins, setPlugins] = useState<string[]>([]);
+    const [availablePlugins, setAvailablePlugins] = useState<{name: string, installed: boolean}[]>([]);
     const [pluginMessage, setPluginMessage] = useState<string | null>(null); // Thông báo từ plugin
     const [showChildren, setShowChildren] = useState<boolean>(true); // Control visibility of children
     const [showMarketplace, setShowMarketplace] = useState<boolean>(false);
+    const [loadingAvailablePlugins, setLoadingAvailablePlugins] = useState<boolean>(false);
     const renderContent = () => {
         switch (activeTab) {
             case 'explorer':
@@ -84,55 +87,131 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                 );
             case 'extensions':
                 return (
-                    <div className="p-2">
-                        <div className="flex justify-between items-center mb-4">
-                            <span className="text-white font-semibold">Extensions</span>
+                    <div className="flex flex-col h-full">
+                        {/* Extensions header */}
+                        <div className="flex items-center justify-between p-3 border-b border-gray-700">
+                            <div className="relative w-full">
+                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                                <Input
+                                    type="text"
+                                    placeholder="Search Extensions in Marketplace"
+                                    className="pl-8 bg-[#3c3c3c] border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                />
+                            </div>
                             <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
-                                className="flex items-center gap-1 text-xs"
+                                className="ml-2 flex items-center gap-1 text-xs"
                                 onClick={() => setShowMarketplace(true)}
                             >
-                                <Download size={14} />
-                                Browse Extensions
+                                <span className="sr-only">More options</span>
+                                <span>...</span>
                             </Button>
                         </div>
 
-                        {plugins.length > 0 ? (
-                            <div>
-                                <ul className="mt-2 space-y-2">
-                                    {plugins.map((plugin) => (
-                                        <li key={plugin} className="text-white bg-gray-800 p-2 rounded flex justify-between items-center">
-                                            {plugin}
-                                            {plugin === "pdf-export" && (
-                                                <Button
-                                                    className="ml-2 bg-blue-600 hover:bg-blue-700 text-white p-1 rounded"
-                                                    onClick={() => handleApplyPlugin(plugin)}
-                                                >
-                                                    Apply
-                                                </Button>
-                                            )}
-                                        </li>
-                                    ))}
-                                </ul>
-                                {plugins.includes("pdf-export") && (
-                                    <p className="text-gray-400 text-xs mt-2">
-                                        Click "Apply" on pdf-export to export the current file to PDF.
-                                    </p>
+                        {/* Extensions content */}
+                        <div className="flex-1 overflow-y-auto p-2">
+                            {/* Installed extensions section */}
+                            <div className="mb-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">INSTALLED</h3>
+                                    <ChevronDown size={16} className="text-gray-400" />
+                                </div>
+
+                                {plugins.length > 0 ? (
+                                    <div className="space-y-1">
+                                        {plugins.map((plugin) => (
+                                            <div key={plugin} className="flex items-center justify-between p-2 hover:bg-[#2a2d2e] rounded cursor-pointer">
+                                                <div>
+                                                    <div className="font-medium text-sm">{plugin}</div>
+                                                    <div className="text-xs text-gray-400">Text Editor Team</div>
+                                                </div>
+                                                <div className="flex items-center">
+                                                    {plugin === "pdf-export" && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 px-2 text-xs mr-2"
+                                                            onClick={() => handleApplyPlugin(plugin)}
+                                                        >
+                                                            Apply
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 px-2 text-xs"
+                                                        onClick={() => handleUninstallPlugin(plugin)}
+                                                    >
+                                                        Uninstall
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 text-sm text-gray-400">
+                                        No extensions installed
+                                    </div>
                                 )}
                             </div>
-                        ) : (
-                            <div className="text-center py-8">
-                                <p className="text-gray-400 mb-4">No extensions installed</p>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setShowMarketplace(true)}
-                                >
-                                    Browse Extensions
-                                </Button>
+
+                            {/* Recommended extensions section */}
+                            <div>
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">RECOMMENDED</h3>
+                                    <ChevronDown size={16} className="text-gray-400" />
+                                </div>
+
+                                {loadingAvailablePlugins ? (
+                                    <div className="flex justify-center items-center py-4">
+                                        <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500"></div>
+                                    </div>
+                                ) : availablePlugins.filter(p => !p.installed).length > 0 ? (
+                                    <div className="space-y-1">
+                                        {availablePlugins
+                                            .filter(plugin => !plugin.installed)
+                                            .map((plugin) => (
+                                                <div
+                                                    key={plugin.name}
+                                                    className="flex items-center justify-between p-2 hover:bg-[#2a2d2e] rounded cursor-pointer"
+                                                    onClick={() => setShowMarketplace(true)}
+                                                >
+                                                    <div>
+                                                        <div className="font-medium text-sm">{plugin.name}</div>
+                                                        <div className="text-xs text-gray-400">Text Editor Team</div>
+                                                    </div>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 px-2 text-xs"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleInstallPlugin(plugin.name);
+                                                        }}
+                                                    >
+                                                        Install
+                                                    </Button>
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4">
+                                        <p className="text-gray-400 mb-4 text-sm">No recommended extensions</p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="flex items-center gap-1 text-xs"
+                                            onClick={() => setShowMarketplace(true)}
+                                        >
+                                            <Download size={14} />
+                                            Browse Extensions in Marketplace
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
                     </div>
                 );
             default:
@@ -229,6 +308,64 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
         }
     };
 
+    // Hàm cài đặt plugin
+    const handleInstallPlugin = async (pluginName: string) => {
+        try {
+            let result;
+            try {
+                // Thử sử dụng invoke trước
+                result = await window.electron.ipcRenderer.invoke("install-plugin", pluginName);
+            } catch (invokeError) {
+                // Nếu invoke không hoạt động, thử sử dụng hàm trực tiếp
+                console.log("Falling back to direct method call for installPlugin");
+                result = await window.electron.ipcRenderer.installPlugin(pluginName);
+            }
+
+            if (result && result.success) {
+                setPluginMessage(`Successfully installed ${pluginName}`);
+                // Cập nhật lại danh sách plugin
+                await loadAvailablePlugins();
+                // Tải lại danh sách plugin đã cài đặt
+                const pluginList = await window.electron.ipcRenderer.invoke("get-plugins");
+                setPlugins(pluginList || []);
+            } else {
+                setPluginMessage(`Failed to install ${pluginName}: ${result?.error || 'Unknown error'}`);
+            }
+        } catch (error: any) {
+            setPluginMessage(`Error installing ${pluginName}: ${error.message}`);
+            console.error(`Error installing plugin ${pluginName}:`, error);
+        }
+    };
+
+    // Hàm gỡ cài đặt plugin
+    const handleUninstallPlugin = async (pluginName: string) => {
+        try {
+            let result;
+            try {
+                // Thử sử dụng invoke trước
+                result = await window.electron.ipcRenderer.invoke("uninstall-plugin", pluginName);
+            } catch (invokeError) {
+                // Nếu invoke không hoạt động, thử sử dụng hàm trực tiếp
+                console.log("Falling back to direct method call for uninstallPlugin");
+                result = await window.electron.ipcRenderer.uninstallPlugin(pluginName);
+            }
+
+            if (result && result.success) {
+                setPluginMessage(`Successfully uninstalled ${pluginName}`);
+                // Cập nhật lại danh sách plugin
+                await loadAvailablePlugins();
+                // Tải lại danh sách plugin đã cài đặt
+                const pluginList = await window.electron.ipcRenderer.invoke("get-plugins");
+                setPlugins(pluginList || []);
+            } else {
+                setPluginMessage(`Failed to uninstall ${pluginName}: ${result?.error || 'Unknown error'}`);
+            }
+        } catch (error: any) {
+            setPluginMessage(`Error uninstalling ${pluginName}: ${error.message}`);
+            console.error(`Error uninstalling plugin ${pluginName}:`, error);
+        }
+    };
+
     // We don't need to listen for file-content here anymore
     // The App component will handle file content loading
     useEffect(() => {
@@ -257,8 +394,23 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     //         }
     //     }
     // }, [activeTab]);
+    // Hàm tải danh sách plugin có sẵn từ marketplace
+    const loadAvailablePlugins = async () => {
+        try {
+            setLoadingAvailablePlugins(true);
+            const plugins = await window.electron.ipcRenderer.invoke("get-available-plugins");
+            setAvailablePlugins(plugins || []);
+        } catch (error) {
+            console.error("Failed to fetch available plugins:", error);
+            setAvailablePlugins([]);
+        } finally {
+            setLoadingAvailablePlugins(false);
+        }
+    };
+
     useEffect(() => {
         if (activeTab === "extensions") {
+            // Tải danh sách plugin đã cài đặt
             window.electron.ipcRenderer.invoke("get-plugins").then((pluginList: string[]) => {
                 setPlugins(pluginList || []);
             }).catch((error) => {
@@ -266,8 +418,13 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                 setPlugins([]);
             });
 
+            // Tải danh sách plugin có sẵn từ marketplace
+            loadAvailablePlugins();
+
             window.electron.ipcRenderer.on("plugin-list", (event, pluginList: string[]) => {
                 setPlugins(pluginList || []);
+                // Cập nhật lại danh sách plugin có sẵn khi danh sách plugin đã cài đặt thay đổi
+                loadAvailablePlugins();
             });
 
             window.electron.ipcRenderer.on("plugin-applied", (event, message: string) => {

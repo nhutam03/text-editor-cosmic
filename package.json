@@ -36,6 +36,8 @@
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-slot": "^1.1.2",
     "@tailwindcss/vite": "^4.0.12",
+    "@types/adm-zip": "^0.5.7",
+    "adm-zip": "^0.5.16",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dictionary-en": "^4.0.0",

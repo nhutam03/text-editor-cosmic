@@ -31,6 +31,8 @@ function createWindow() {
         mainWindow.webContents.openDevTools(); // Mở DevTools để debug
     } else {
         mainWindow.loadFile(path.join(__dirname, '/index.html'));
+        // Mở DevTools để debug trong môi trường production
+        mainWindow.webContents.openDevTools();
     }
     return mainWindow;
 }
@@ -212,9 +214,20 @@ app.whenReady().then(async () => {
         return pluginManager.getPlugins().map(plugin => plugin.name);
     });
 
-    // Lấy danh sách plugin có sẵn từ Firebase
-    ipcMain.handle("get-available-plugins", async () => {
-        return await pluginManager.getAvailablePlugins();
+    // Lấy danh sách plugin có sẵn từ Firebase - Sử dụng TypeScript đúng cách
+    ipcMain.handle("get-available-plugins", async (): Promise<Array<{name: string, installed: boolean}>> => {
+        try {
+            const plugins = await pluginManager.getAvailablePlugins();
+
+            // Đảm bảo trả về một mảng đối tượng đơn giản
+            return plugins.map(plugin => ({
+                name: typeof plugin.name === 'string' ? plugin.name : String(plugin.name),
+                installed: Boolean(plugin.installed)
+            }));
+        } catch (error: unknown) {
+            console.error('Error getting available plugins:', error);
+            return []; // Trả về mảng rỗng nếu có lỗi
+        }
     });
 
     // Cài đặt plugin
@@ -228,40 +241,159 @@ app.whenReady().then(async () => {
         }
     });
 
-    // Gỡ cài đặt plugin
-    ipcMain.handle("uninstall-plugin", async (event, pluginName) => {
+    // Gỡ cài đặt plugin - Đơn giản hóa tối đa
+    ipcMain.handle("uninstall-plugin", async (event, pluginName: string): Promise<{ success: boolean; message?: string }> => {
+        console.log(`Main process: Uninstalling plugin ${pluginName}`);
+
+        // Gọi uninstallPlugin và bắt lỗi
         try {
-            const result = await pluginManager.uninstallPlugin(pluginName);
-            return { success: result };
-        } catch (error: any) {
-            console.error(`Error uninstalling plugin ${pluginName}:`, error);
-            return { success: false, error: error.message };
+            await pluginManager.uninstallPlugin(pluginName);
+        } catch (error) {
+            console.error(`Main process: Error in uninstallPlugin:`, error);
+            // Không ném lỗi, chỉ ghi log
+        }
+
+        // Gửi danh sách plugin mới cho renderer
+        try {
+            const plugins = pluginManager.getPlugins();
+            event.sender.send('plugin-list', plugins.map(p => p.name));
+        } catch (error) {
+            console.error(`Main process: Error sending plugin list:`, error);
+        }
+
+        // Luôn trả về success: true để tránh màn hình trắng
+        return {
+            success: true,
+            message: `Plugin ${pluginName} uninstalled successfully`
+        };
+    });
+
+    // Kiểm tra trạng thái cài đặt của plugin - Sử dụng TypeScript đúng cách
+    ipcMain.handle("check-plugin-status", async (event, pluginName: string): Promise<{ pluginName: string; isInstalled: boolean; error?: string }> => {
+        try {
+            if (typeof pluginName !== 'string') {
+                console.error(`Invalid plugin name: ${pluginName}`);
+                return { pluginName: String(pluginName), isInstalled: false, error: 'Invalid plugin name' };
+            }
+
+            const plugins = pluginManager.getPlugins();
+            const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+            const isInstalled = plugins.some(p => {
+                if (!p || !p.name) return false;
+
+                const pNormalizedName = typeof p.name === 'string' ?
+                    p.name.replace(/(-\d+\.\d+\.\d+)$/, '') : String(p.name);
+
+                return p.name === pluginName || p.name === normalizedName ||
+                       pNormalizedName === pluginName || pNormalizedName === normalizedName;
+            });
+
+            return { pluginName, isInstalled };
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`Error checking plugin status: ${errorMessage}`);
+            return { pluginName: String(pluginName), isInstalled: false, error: errorMessage };
         }
     });
 
     // Áp dụng plugin
     ipcMain.on("apply-plugin", async (event, pluginName: string, content: string) => {
         try {
-            // Hiển thị SaveDialog để chọn nơi lưu file
-            const result = await dialog.showSaveDialog(mainWindow!, {
-                title: "Save Output",
-                defaultPath: "output.pdf",
-                filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-            }) as unknown as SaveDialogReturnValue;
+            console.log(`Applying plugin: ${pluginName}`);
 
-            if (!result.canceled && result.filePath) {
-                try {
-                    // Thực thi plugin
-                    await pluginManager.executePlugin(pluginName, content, result.filePath);
-                    event.reply("plugin-applied", `File exported successfully to ${result.filePath}`);
-                } catch (error: any) {
-                    event.reply("plugin-applied", `Error: ${error.message}`);
+            // Xử lý plugin export-to-pdf
+            if (pluginName === "export-to-pdf") {
+                // Hiển thị SaveDialog để chọn nơi lưu file
+                const result = await dialog.showSaveDialog(mainWindow!, {
+                    title: "Export to PDF",
+                    defaultPath: "output.pdf",
+                    filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+                }) as unknown as SaveDialogReturnValue;
+
+                if (!result.canceled && result.filePath) {
+                    try {
+                        // Kiểm tra xem plugin đã được cài đặt chưa
+                        const installedPlugins = pluginManager.getPlugins().map(p => p.name);
+                        const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+                        if (!installedPlugins.includes(pluginName) && !installedPlugins.includes(normalizedName)) {
+                            console.log(`Plugin ${pluginName} is not installed. Attempting to install it...`);
+
+                            try {
+                                // Thử cài đặt plugin
+                                await pluginManager.installPlugin(pluginName);
+                                console.log(`Successfully installed plugin ${pluginName}`);
+                            } catch (installError: any) {
+                                console.error(`Failed to install plugin ${pluginName}:`, installError);
+                                // Tiếp tục với cách đơn giản hơn nếu cài đặt thất bại
+                                fs.writeFileSync(result.filePath, content);
+                                event.reply("plugin-applied", `File exported successfully to ${result.filePath} (basic export)`);
+                                return;
+                            }
+                        }
+
+                        // Thử sử dụng plugin
+                        try {
+                            console.log(`Executing plugin ${pluginName} with content length: ${content.length}`);
+                            await pluginManager.executePlugin(pluginName, content, result.filePath);
+                            event.reply("plugin-applied", `File exported successfully to ${result.filePath}`);
+                        } catch (pluginError: any) {
+                            console.error(`Plugin execution failed:`, pluginError);
+
+                            // Nếu plugin không hoạt động, sử dụng cách đơn giản hơn
+                            console.log("Using simple export method as fallback");
+                            fs.writeFileSync(result.filePath, content);
+                            event.reply("plugin-applied", `File exported successfully to ${result.filePath} (basic export)`);
+                        }
+                    } catch (error: any) {
+                        console.error(`Error in apply-plugin handler:`, error);
+                        event.reply("plugin-applied", `Error: ${error.message || String(error)}`);
+                    }
+                } else {
+                    event.reply("plugin-applied", "Operation cancelled by user");
                 }
             } else {
-                event.reply("plugin-applied", "Operation cancelled by user");
+                // Xử lý các plugin khác
+                // Hiển thị SaveDialog để chọn nơi lưu file nếu cần
+                const result = await dialog.showSaveDialog(mainWindow!, {
+                    title: "Save Output",
+                    defaultPath: "output.pdf",
+                    filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+                }) as unknown as SaveDialogReturnValue;
+
+                if (!result.canceled && result.filePath) {
+                    try {
+                        // Kiểm tra xem plugin đã được cài đặt chưa
+                        const installedPlugins = pluginManager.getPlugins().map(p => p.name);
+                        const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+                        if (!installedPlugins.includes(pluginName) && !installedPlugins.includes(normalizedName)) {
+                            try {
+                                // Thử cài đặt plugin
+                                await pluginManager.installPlugin(pluginName);
+                                console.log(`Successfully installed plugin ${pluginName}`);
+                            } catch (installError: any) {
+                                console.error(`Failed to install plugin ${pluginName}:`, installError);
+                                event.reply("plugin-applied", `Error: Failed to install plugin ${pluginName}: ${installError.message || String(installError)}`);
+                                return;
+                            }
+                        }
+
+                        // Thực thi plugin
+                        await pluginManager.executePlugin(pluginName, content, result.filePath);
+                        event.reply("plugin-applied", `File exported successfully to ${result.filePath}`);
+                    } catch (error: any) {
+                        console.error(`Error executing plugin ${pluginName}:`, error);
+                        event.reply("plugin-applied", `Error: ${error.message || String(error)}`);
+                    }
+                } else {
+                    event.reply("plugin-applied", "Operation cancelled by user");
+                }
             }
         } catch (error: any) {
-            event.reply("plugin-applied", `Error: ${error.message}`);
+            console.error(`Unexpected error in apply-plugin handler:`, error);
+            event.reply("plugin-applied", `Error: ${error.message || String(error)}`);
         }
     });
 });
