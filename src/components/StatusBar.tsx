@@ -1,3 +1,6 @@
+import React from 'react';
+import { Bell, Check, AlertTriangle } from 'lucide-react';
+
 interface StatusBarProps {
     stats: {
         line: number;
@@ -7,14 +10,22 @@ interface StatusBarProps {
         language: string;
     };
 }
+
 const StatusBar: React.FC<StatusBarProps> = ({ stats }) => {
     return (
-        <div className="flex bg-gray-800 p-2 border-t border-gray-700 h-[30px] items-center justify-between">
-            <span className="text-xs text-white">
-                Ln {stats.line}, Col {stats.column} | Words: {stats.wordCount} | Pages:{" "}
-                {stats.page} | Lang: {stats.language}
-            </span>
-            <span className="text-xs text-white">Status: Ready</span>
+        <div className="flex bg-[#007acc] text-white text-xs h-[22px] items-center justify-between px-2">
+            <div className="flex items-center space-x-2">
+                <span className="flex items-center"><Bell size={12} className="mr-1" /> 0</span>
+                <span className="flex items-center"><AlertTriangle size={12} className="mr-1" /> 0</span>
+                <span className="flex items-center"><Check size={12} className="mr-1" /> 0</span>
+            </div>
+            <div className="flex items-center space-x-4">
+                <span>Ln {stats.line}, Col {stats.column}</span>
+                <span>Spaces: 2</span>
+                <span>UTF-8</span>
+                <span>CRLF</span>
+                <span>{stats.language === 'typescript' ? 'TypeScript JSX' : stats.language}</span>
+            </div>
         </div>
     );
 };
