@@ -28,11 +28,12 @@ function createWindow() {
 
     if (process.env.NODE_ENV === 'development') {
         mainWindow.loadURL('http://localhost:5173');
-        mainWindow.webContents.openDevTools(); // Mở DevTools để debug
+        // DevTools chỉ mở khi cần debug trong môi trường development
+        // mainWindow.webContents.openDevTools();
     } else {
         mainWindow.loadFile(path.join(__dirname, '/index.html'));
-        // Mở DevTools để debug trong môi trường production
-        mainWindow.webContents.openDevTools();
+        // Không mở DevTools trong môi trường production
+        // mainWindow.webContents.openDevTools();
     }
     return mainWindow;
 }
