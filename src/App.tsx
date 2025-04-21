@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import ContentArea from './components/ContentArea';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
 import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText } from 'lucide-react';
+import { MenuItem } from './plugin/MenuContribution';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('explorer');
@@ -20,6 +21,7 @@ const App: React.FC = () => {
   const [showEditMenu, setShowEditMenu] = useState(false);
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
+  const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
   const [editorStats, setEditorStats] = useState({
     line: 24,
     column: 5,
@@ -482,6 +484,64 @@ const App: React.FC = () => {
     setContentSize(isRightSidebarCollapsed ? 0 : defaultContentSize);
   }, [isRightSidebarCollapsed]);
 
+  // Effect for plugin-related events
+  useEffect(() => {
+    // Listen for plugin list updates
+    window.electron.ipcRenderer.on('plugin-list', handlePluginListUpdate);
+    window.electron.ipcRenderer.on('menu-items-changed', handleMenuItemsChanged);
+    window.electron.ipcRenderer.on('menu-action-result', handleMenuActionResult);
+
+    // Load plugin menu items for File menu
+    loadPluginMenuItems('file');
+
+    return () => {
+      window.electron.ipcRenderer.removeAllListeners('plugin-list');
+      window.electron.ipcRenderer.removeAllListeners('menu-items-changed');
+      window.electron.ipcRenderer.removeAllListeners('menu-action-result');
+    };
+  }, []);
+
+  const handlePluginListUpdate = (event: any, plugins: string[]) => {
+    console.log('Plugin list updated:', plugins);
+    setInstalledPlugins(plugins || []);
+
+    // Reload plugin menu items when plugin list changes
+    loadPluginMenuItems('file');
+  };
+
+  const handleMenuItemsChanged = (event: any, menuItems: MenuItem[]) => {
+    console.log('Menu items changed:', menuItems);
+    setPluginMenuItems(menuItems || []);
+  };
+
+  const handleMenuActionResult = (event: any, result: { success: boolean, message: string, data?: any }) => {
+    console.log('Menu action result:', result);
+    if (result.success) {
+      // Handle successful menu action
+      console.log('Menu action executed successfully:', result.message);
+    } else {
+      // Handle failed menu action
+      console.error('Menu action failed:', result.message);
+    }
+  };
+
+  const loadPluginMenuItems = async (parentMenu: string) => {
+    try {
+      const menuItems = await window.electron.ipcRenderer.getMenuItems(parentMenu);
+      console.log(`Menu items for ${parentMenu}:`, menuItems);
+      setPluginMenuItems(menuItems || []);
+    } catch (error) {
+      console.error(`Error loading menu items for ${parentMenu}:`, error);
+      setPluginMenuItems([]);
+    }
+  };
+
+  const handlePluginMenuItemClick = (menuItem: MenuItem) => {
+    console.log(`Executing plugin menu item: ${menuItem.id} (${menuItem.label})`);
+    window.electron.ipcRenderer.executeMenuAction(menuItem.id, currentContent, activeFile);
+    closeAllMenus();
+  };
+
   // We've moved the file limit logic to the main handleFileOpened function
 
   // Add a useEffect to log file tabs information
@@ -536,6 +596,24 @@ const App: React.FC = () => {
                       <span>Export to PDF</span>
                     </div>
                   )}
+
+                  {/* Hiển thị các menu item từ plugin */}
+                  {pluginMenuItems
+                    .filter(item => item.parentMenu.toLowerCase() === 'file')
+                    .map(menuItem => (
+                      <div
+                        key={menuItem.id}
+                        className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                        onClick={() => handlePluginMenuItemClick(menuItem)}
+                      >
+                        {menuItem.icon ? (
+                          <span className="mr-2">{menuItem.icon}</span>
+                        ) : (
+                          <FileText size={16} className="mr-2" />
+                        )}
+                        <span>{menuItem.label}</span>
+                      </div>
+                    ))}
                 </div>
               </div>
             )}

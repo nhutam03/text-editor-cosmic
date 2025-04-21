@@ -8,8 +8,12 @@ import {
   MessageType,
   RegisterMessage,
   ExecuteMessage,
-  ResponseMessage
+  ResponseMessage,
+  RegisterMenuMessage,
+  ExecuteMenuActionMessage,
+  PluginMenuItem
 } from './PluginInterface';
+import { MenuRegistry, MenuItem } from './MenuContribution';
 import { PluginInstaller } from './PluginInstaller';
 import { getAvailablePlugins } from '../services/firebase';
 import { StorageReference } from 'firebase/storage';
@@ -22,14 +26,18 @@ export class PluginManager {
   private plugins: Map<string, PluginConnection> = new Map();
   private port: number;
   private onPluginListChanged: (plugins: PluginInfo[]) => void;
+  private onMenuItemsChanged: (menuItems: MenuItem[]) => void;
   private pluginInstaller: PluginInstaller;
   private pluginProcesses: Map<string, ChildProcess> = new Map();
   private commands: { [key: string]: (...args: any[]) => any } = {};
+  private menuRegistry: MenuRegistry;
 
   constructor(port: number = 5000) {
     this.port = port;
     this.onPluginListChanged = () => {}; // Mặc định không làm gì
+    this.onMenuItemsChanged = () => {}; // Mặc định không làm gì
     this.pluginInstaller = new PluginInstaller();
+    this.menuRegistry = MenuRegistry.getInstance();
   }
 
   /**
@@ -73,6 +81,25 @@ export class PluginManager {
    */
   public setPluginListChangedCallback(callback: (plugins: PluginInfo[]) => void): void {
     this.onPluginListChanged = callback;
+  }
+
+  /**
+   * Đăng ký callback khi danh sách menu item thay đổi
+   */
+  public setMenuItemsChangedCallback(callback: (menuItems: MenuItem[]) => void): void {
+    this.onMenuItemsChanged = callback;
+
+    // Đăng ký callback với MenuRegistry
+    this.menuRegistry.addListener((items) => {
+      this.onMenuItemsChanged(items);
+    });
+  }
+
+  /**
+   * Lấy danh sách menu item cho menu cha cụ thể
+   */
+  public getMenuItemsForParent(parentMenu: string): MenuItem[] {
+    return this.menuRegistry.getMenuItemsForParent(parentMenu);
   }
 
   /**
@@ -578,6 +605,14 @@ export class PluginManager {
         this.handleResponseMessage(socket, message as ResponseMessage);
         break;
 
+      case MessageType.REGISTER_MENU:
+        this.handleRegisterMenuMessage(socket, message as RegisterMenuMessage);
+        break;
+
+      case MessageType.EXECUTE_MENU_ACTION:
+        this.handleExecuteMenuActionMessage(socket, message as ExecuteMenuActionMessage);
+        break;
+
       default:
         console.warn(`Unknown message type: ${message.type}`);
     }
@@ -643,8 +678,85 @@ export class PluginManager {
         this.plugins.delete(name);
         console.log(`Plugin disconnected: ${name}`);
 
+        // Xóa các menu item của plugin
+        this.menuRegistry.unregisterMenuItemsByPlugin(name);
+
         // Thông báo danh sách plugin đã thay đổi
         this.onPluginListChanged(this.getPlugins());
+
+        // Thông báo danh sách menu item đã thay đổi
+        this.onMenuItemsChanged(this.menuRegistry.getMenuItems());
+        return;
+      }
+    }
+  }
+
+  /**
+   * Xử lý thông điệp đăng ký menu từ plugin
+   */
+  private handleRegisterMenuMessage(socket: Socket, message: RegisterMenuMessage): void {
+    // Tìm plugin từ socket
+    let pluginName = '';
+    for (const [name, plugin] of this.plugins.entries()) {
+      if (plugin.socket === socket) {
+        pluginName = name;
+        break;
+      }
+    }
+
+    if (!pluginName) {
+      console.warn('Received register menu message from unregistered plugin');
+      return;
+    }
+
+    console.log(`Registering menu items for plugin ${pluginName}:`, message.payload.menuItems);
+
+    // Xóa các menu item cũ của plugin (nếu có)
+    this.menuRegistry.unregisterMenuItemsByPlugin(pluginName);
+
+    // Đăng ký các menu item mới
+    for (const menuItem of message.payload.menuItems) {
+      const item: MenuItem = {
+        ...menuItem,
+        pluginId: pluginName
+      };
+
+      this.menuRegistry.registerMenuItem(item);
+    }
+
+    // Thông báo danh sách menu item đã thay đổi
+    this.onMenuItemsChanged(this.menuRegistry.getMenuItems());
+  }
+
+  /**
+   * Xử lý thông điệp thực thi hành động menu
+   */
+  private handleExecuteMenuActionMessage(socket: Socket, message: ExecuteMenuActionMessage): void {
+    // Tìm plugin từ socket
+    for (const plugin of this.plugins.values()) {
+      if (plugin.socket === socket) {
+        // Tìm menu item tương ứng
+        const menuItems = this.menuRegistry.getMenuItems();
+        const menuItem = menuItems.find(item => item.id === message.payload.menuItemId);
+
+        if (!menuItem) {
+          console.warn(`Menu item with ID ${message.payload.menuItemId} not found`);
+          return;
+        }
+
+        // Thực thi hành động menu
+        console.log(`Executing menu action for item ${menuItem.id} (${menuItem.label})`);
+
+        // Gọi executePlugin với nội dung và tùy chọn từ message
+        this.executePlugin(
+          plugin.info.name,
+          message.payload.content || '',
+          message.payload.filePath,
+          message.payload.options
+        ).catch(error => {
+          console.error(`Error executing menu action: ${error.message}`);
+        });
+
         return;
       }
     }

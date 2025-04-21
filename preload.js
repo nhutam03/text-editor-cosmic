@@ -40,6 +40,13 @@ contextBridge.exposeInMainWorld('electron', {
             }
         },
         getPlugin: (plugin) => ipcRenderer.invoke("getPlugin", plugin),
+
+        // Menu related methods
+        getMenuItems: (parentMenu) => ipcRenderer.invoke("get-menu-items", parentMenu),
+        executeMenuAction: (menuItemId, content, filePath) => {
+            console.log(`Preload: Executing menu action ${menuItemId}`);
+            ipcRenderer.send("execute-menu-action", menuItemId, content, filePath);
+        },
     },
 
 });

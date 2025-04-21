@@ -13,6 +13,8 @@ declare global {
                 installPlugin: (pluginName: string) => Promise<{ success: boolean, plugin?: any, error?: string }>;
                 uninstallPlugin: (pluginName: string) => Promise<{ success: boolean, error?: string }>;
                 getPlugin: (plugin: string) => Promise<any>;
+                getMenuItems: (parentMenu: string) => Promise<any[]>;
+                executeMenuAction: (menuItemId: string, content: string, filePath?: string) => void;
             };
         };
     }

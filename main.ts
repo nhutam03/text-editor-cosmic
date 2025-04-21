@@ -49,6 +49,13 @@ async function initializePluginManager() {
         }
     });
 
+    // Đăng ký callback khi danh sách menu item thay đổi
+    pluginManager.setMenuItemsChangedCallback((menuItems) => {
+        if (mainWindow) {
+            mainWindow.webContents.send('menu-items-changed', menuItems);
+        }
+    });
+
     // Khởi động Plugin Manager
     await pluginManager.start();
 }
@@ -432,6 +439,52 @@ app.whenReady().then(async () => {
         } catch (error: any) {
             console.error(`Unexpected error in apply-plugin handler:`, error);
             event.reply("plugin-applied", `Error: ${error.message || String(error)}`);
+        }
+    });
+
+    // Lấy danh sách menu item cho menu cha cụ thể
+    ipcMain.handle("get-menu-items", async (event, parentMenu: string) => {
+        try {
+            return pluginManager.getMenuItemsForParent(parentMenu);
+        } catch (error) {
+            console.error(`Error getting menu items for ${parentMenu}:`, error);
+            return [];
+        }
+    });
+
+    // Thực thi hành động menu
+    ipcMain.on("execute-menu-action", async (event, menuItemId: string, content: string, filePath?: string) => {
+        try {
+            console.log(`Executing menu action: ${menuItemId}`);
+
+            // Tìm menu item tương ứng
+            const menuItems = pluginManager.getMenuItemsForParent('file'); // Tạm thời chỉ lấy từ menu File
+            const menuItem = menuItems.find(item => item.id === menuItemId);
+
+            if (!menuItem) {
+                console.error(`Menu item with ID ${menuItemId} not found`);
+                event.reply("menu-action-result", { success: false, message: `Menu item with ID ${menuItemId} not found` });
+                return;
+            }
+
+            // Thực thi plugin tương ứng với menu item
+            const result = await pluginManager.executePlugin(
+                menuItem.pluginId,
+                content,
+                filePath
+            );
+
+            event.reply("menu-action-result", {
+                success: true,
+                message: `Menu action ${menuItem.label} executed successfully`,
+                data: result
+            });
+        } catch (error: any) {
+            console.error(`Error executing menu action:`, error);
+            event.reply("menu-action-result", {
+                success: false,
+                message: `Error: ${error.message || String(error)}`
+            });
         }
     });
 });
