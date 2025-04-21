@@ -39,10 +39,12 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
       // Gọi hàm uninstall được truyền từ component cha
       if (onUninstall) {
         try {
+          // Gọi hàm uninstall trong try-catch để bắt lỗi
+          console.log(`ExtensionCard: Calling onUninstall for ${pluginName}`);
           onUninstall();
         } catch (error) {
+          // Ghi log lỗi nhưng không hiển thị alert để tránh làm gián đoạn trải nghiệm
           console.error(`ExtensionCard: Error in onUninstall for ${pluginName}:`, error);
-          alert(`Failed to uninstall ${pluginName}. Please try again.`);
         }
       }
     } else {

@@ -47,6 +47,12 @@ contextBridge.exposeInMainWorld('electron', {
             console.log(`Preload: Executing menu action ${menuItemId}`);
             ipcRenderer.send("execute-menu-action", menuItemId, content, filePath);
         },
+
+        // Export to PDF - Chức năng tích hợp trực tiếp
+        exportToPdf: (content, filePath) => {
+            console.log(`Preload: Exporting to PDF, content length: ${content?.length || 0}`);
+            ipcRenderer.send("export-to-pdf", content, filePath);
+        },
     },
 
 });

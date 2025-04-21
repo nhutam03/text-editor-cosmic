@@ -215,6 +215,34 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
               setSelectedPlugin(updatedPlugin);
             }
           }
+
+          // Đảm bảo cập nhật trạng thái cài đặt của plugin trong danh sách
+          setPlugins(prevPlugins => {
+            return prevPlugins.map(plugin => {
+              const pluginNormalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, '');
+              if (pluginNormalizedName === normalizedName || plugin.name === pluginName) {
+                console.log(`Marking plugin ${plugin.name} as installed`);
+                return { ...plugin, installed: true };
+              }
+              return plugin;
+            });
+          });
+
+          // Cập nhật menu items sau khi cài đặt plugin
+          setTimeout(() => {
+            console.log('Requesting menu items update after plugin installation');
+            window.electron.ipcRenderer.invoke('get-menu-items', 'file')
+              .then(fileMenuItems => {
+                console.log('Updated file menu items:', fileMenuItems);
+              })
+              .catch(err => console.error('Error getting file menu items:', err));
+
+            window.electron.ipcRenderer.invoke('get-menu-items', 'edit')
+              .then(editMenuItems => {
+                console.log('Updated edit menu items:', editMenuItems);
+              })
+              .catch(err => console.error('Error getting edit menu items:', err));
+          }, 1000); // Đợi 1 giây để plugin có thời gian đăng ký menu items
         } else {
           const errorMessage = result.error ? String(result.error) : 'Unknown error';
           setError(`Failed to install ${normalizedName}: ${errorMessage}`);
@@ -241,6 +269,12 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
     setError(null);
     setSuccess(null);
 
+    // Đặt selectedPlugin về null trước khi gỡ cài đặt để tránh màn hình trắng
+    if (selectedPlugin && selectedPlugin.name === pluginName) {
+      console.log(`PluginMarketplace: Clearing selected plugin before uninstall`);
+      setSelectedPlugin(null);
+    }
+
     try {
       // Gọi API uninstall trực tiếp
       console.log(`PluginMarketplace: Calling uninstallPlugin API for ${pluginName}`);
@@ -251,13 +285,18 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
 
       // Cập nhật danh sách plugin
       console.log(`PluginMarketplace: Reloading plugins list`);
-      await loadPlugins();
-
-      // Cập nhật plugin đã chọn
-      if (selectedPlugin && selectedPlugin.name === pluginName) {
-        console.log(`PluginMarketplace: Updating selected plugin`);
-        setSelectedPlugin({...selectedPlugin, installed: false});
+      try {
+        await loadPlugins();
+        console.log(`PluginMarketplace: Plugins list reloaded successfully`);
+      } catch (loadError) {
+        console.error(`PluginMarketplace: Error reloading plugins:`, loadError);
+        // Không hiển thị lỗi cho người dùng để tránh làm gián đoạn trải nghiệm
       }
+
+      // Ẩn thông báo thành công sau 3 giây
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
     } catch (error) {
       // Xử lý lỗi đơn giản
       console.error(`PluginMarketplace: Error in handleUninstall:`, error);
@@ -269,6 +308,11 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
       } catch (loadError) {
         console.error(`PluginMarketplace: Error reloading plugins:`, loadError);
       }
+
+      // Ẩn thông báo lỗi sau 3 giây
+      setTimeout(() => {
+        setError(null);
+      }, 3000);
     } finally {
       // Luôn đặt trạng thái installing về null
       setInstalling(null);

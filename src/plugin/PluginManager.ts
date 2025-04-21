@@ -31,6 +31,7 @@ export class PluginManager {
   private pluginProcesses: Map<string, ChildProcess> = new Map();
   private commands: { [key: string]: (...args: any[]) => any } = {};
   private menuRegistry: MenuRegistry;
+  private mainWindow: Electron.BrowserWindow | null = null;
 
   constructor(port: number = 5000) {
     this.port = port;
@@ -38,6 +39,14 @@ export class PluginManager {
     this.onMenuItemsChanged = () => {}; // Mặc định không làm gì
     this.pluginInstaller = new PluginInstaller();
     this.menuRegistry = MenuRegistry.getInstance();
+  }
+
+  /**
+   * Đặt tham chiếu đến cửa sổ chính để gửi thông báo
+   */
+  public setMainWindow(window: Electron.BrowserWindow): void {
+    this.mainWindow = window;
+    console.log('Main window reference set in PluginManager');
   }
 
   /**
@@ -138,6 +147,9 @@ export class PluginManager {
       const availablePlugins = await getAvailablePlugins();
       const installedPlugins = this.getPlugins();
 
+      console.log('Available plugins from Firebase:', availablePlugins.map(p => p.name));
+      console.log('Installed plugins:', installedPlugins.map(p => p.name));
+
       // Tạo danh sách tên plugin đã cài đặt (bao gồm cả tên chuẩn hóa)
       const installedNames = new Set<string>();
       for (const plugin of installedPlugins) {
@@ -148,6 +160,8 @@ export class PluginManager {
           installedNames.add(normalizedName);
         }
       }
+
+      console.log('Installed plugin names (including normalized):', Array.from(installedNames));
 
       // Lọc các plugin trùng lặp (loại bỏ các phiên bản trùng lặp)
       const uniquePlugins = new Map<string, { name: string, ref: StorageReference }>();
@@ -162,16 +176,26 @@ export class PluginManager {
         }
       }
 
+      console.log('Unique plugins after filtering:', Array.from(uniquePlugins.keys()));
+
       // Chuyển đổi thành mảng kết quả
-      return Array.from(uniquePlugins.values()).map(plugin => {
+      const result = Array.from(uniquePlugins.values()).map(plugin => {
         // Chuẩn hóa tên plugin (loại bỏ phiên bản nếu có)
         const normalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, '');
 
+        // Kiểm tra xem plugin đã được cài đặt chưa
+        const isInstalled = installedNames.has(normalizedName) || installedNames.has(plugin.name);
+
+        console.log(`Plugin ${plugin.name} (normalized: ${normalizedName}) installed: ${isInstalled}`);
+
         return {
           name: plugin.name,
-          installed: installedNames.has(normalizedName) || installedNames.has(plugin.name)
+          installed: isInstalled
         };
       });
+
+      console.log('Final result:', result);
+      return result;
     } catch (error) {
       console.error('Error getting available plugins:', error);
       return [];
@@ -188,14 +212,25 @@ export class PluginManager {
     options?: any
   ): Promise<any> {
     console.log(`Executing plugin: ${pluginName}`);
-    const plugin = this.plugins.get(pluginName);
+    console.log(`Content length: ${content?.length || 0}, filePath: ${filePath || 'none'}`);
+
+    // Normalize plugin name (remove version suffix if present)
+    const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+    console.log(`Normalized plugin name: ${normalizedName}`);
+
+    // Try both original and normalized names
+    let plugin = this.plugins.get(pluginName) || this.plugins.get(normalizedName);
 
     if (!plugin) {
       console.error(`Plugin ${pluginName} not found in registered plugins`);
+      console.log(`Registered plugins: ${Array.from(this.plugins.keys()).join(', ')}`);
 
       // Check if the plugin is installed but not registered
       const installedPlugins = this.pluginInstaller.getInstalledPlugins();
-      const isInstalled = installedPlugins.some(p => p.name === pluginName);
+      console.log(`Installed plugins: ${installedPlugins.map(p => p.name).join(', ')}`);
+
+      const isInstalled = installedPlugins.some(p =>
+        p.name === pluginName || p.name === normalizedName);
 
       if (isInstalled) {
         console.log(`Plugin ${pluginName} is installed but not registered. Attempting to start it...`);
@@ -204,11 +239,12 @@ export class PluginManager {
           await this.startPlugin(pluginName);
 
           // Check if the plugin is now registered
-          const plugin = this.plugins.get(pluginName);
+          plugin = this.plugins.get(pluginName) || this.plugins.get(normalizedName);
           if (plugin) {
             console.log(`Successfully started and registered plugin ${pluginName}`);
             return this.executePlugin(pluginName, content, filePath, options);
           } else {
+            console.error(`Failed to register plugin ${pluginName} after starting it`);
             throw new Error(`Failed to register plugin ${pluginName} after starting it`);
           }
         } catch (error: any) {
@@ -216,6 +252,7 @@ export class PluginManager {
           throw new Error(`Plugin ${pluginName} is installed but could not be started: ${error.message || error}`);
         }
       } else {
+        console.error(`Plugin ${pluginName} is not installed`);
         throw new Error(`Plugin ${pluginName} is not installed`);
       }
     }
@@ -307,11 +344,31 @@ export class PluginManager {
         });
 
         if (pluginInfo) {
+          // Đảm bảo plugin được đánh dấu là đã cài đặt
+          pluginInfo.installed = true;
+
           // Try to start the plugin
           await this.startPlugin(pluginInfo.name);
 
           // Notify that the plugin list has changed
           this.onPluginListChanged(this.getPlugins());
+
+          // Cập nhật menu items
+          setTimeout(() => {
+            try {
+              // Lấy danh sách menu items cho các menu cha
+              const fileMenuItems = this.getMenuItemsForParent('file');
+              const editMenuItems = this.getMenuItemsForParent('edit');
+
+              console.log(`PluginManager: Sending updated menu items after plugin installation`);
+              console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+
+              // Thông báo thay đổi menu items
+              this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems]);
+            } catch (menuError) {
+              console.error(`PluginManager: Error sending menu items:`, menuError);
+            }
+          }, 500);
 
           return pluginInfo;
         }
@@ -322,11 +379,31 @@ export class PluginManager {
       const pluginInfo = await this.pluginInstaller.installPluginByName(pluginName);
       console.log(`Plugin installed: ${JSON.stringify(pluginInfo)}`);
 
+      // Đảm bảo plugin được đánh dấu là đã cài đặt
+      pluginInfo.installed = true;
+
       // Start the plugin
       await this.startPlugin(pluginInfo.name);
 
       // Notify that the plugin list has changed
       this.onPluginListChanged(this.getPlugins());
+
+      // Cập nhật menu items
+      setTimeout(() => {
+        try {
+          // Lấy danh sách menu items cho các menu cha
+          const fileMenuItems = this.getMenuItemsForParent('file');
+          const editMenuItems = this.getMenuItemsForParent('edit');
+
+          console.log(`PluginManager: Sending updated menu items after plugin installation`);
+          console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+
+          // Thông báo thay đổi menu items
+          this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems]);
+        } catch (menuError) {
+          console.error(`PluginManager: Error sending menu items:`, menuError);
+        }
+      }, 500);
 
       return pluginInfo;
     } catch (error) {
@@ -394,6 +471,23 @@ export class PluginManager {
     // Luôn thông báo thay đổi danh sách plugin
     try {
       this.onPluginListChanged(this.getPlugins());
+
+      // Cập nhật menu items
+      setTimeout(() => {
+        try {
+          // Lấy danh sách menu items cho các menu cha
+          const fileMenuItems = this.getMenuItemsForParent('file');
+          const editMenuItems = this.getMenuItemsForParent('edit');
+
+          console.log(`PluginManager: Sending updated menu items after plugin uninstallation`);
+          console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+
+          // Thông báo thay đổi menu items
+          this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems]);
+        } catch (menuError) {
+          console.error(`PluginManager: Error sending menu items:`, menuError);
+        }
+      }, 500);
     } catch (error) {
       console.error(`PluginManager: Error notifying plugin list changed:`, error);
     }
@@ -408,9 +502,16 @@ export class PluginManager {
   private async loadInstalledPlugins(): Promise<void> {
     try {
       const installedPlugins = this.pluginInstaller.getInstalledPlugins();
+      console.log('Found installed plugins:', installedPlugins);
 
       for (const pluginInfo of installedPlugins) {
-        await this.startPlugin(pluginInfo.name);
+        console.log(`Starting plugin: ${pluginInfo.name}`);
+        try {
+          await this.startPlugin(pluginInfo.name);
+          console.log(`Successfully started plugin: ${pluginInfo.name}`);
+        } catch (error) {
+          console.error(`Error starting plugin ${pluginInfo.name}:`, error);
+        }
       }
     } catch (error) {
       console.error('Error loading installed plugins:', error);
@@ -420,7 +521,7 @@ export class PluginManager {
   /**
    * Start a plugin
    */
-  private async startPlugin(pluginName: string): Promise<void> {
+  public async startPlugin(pluginName: string): Promise<void> {
     try {
       console.log(`Starting plugin: ${pluginName}`);
 
@@ -443,11 +544,33 @@ export class PluginManager {
       const pluginDir = path.dirname(mainPath);
       console.log(`Plugin directory: ${pluginDir}`);
 
+      // Check if node_modules exists
+      const nodeModulesPath = path.join(pluginDir, 'node_modules');
+      console.log(`Checking for node_modules at: ${nodeModulesPath}`);
+      if (!fs.existsSync(nodeModulesPath)) {
+        console.warn(`node_modules not found for plugin ${pluginName}. Installing dependencies...`);
+        try {
+          const { execSync } = require('child_process');
+          execSync('npm install --no-fund --no-audit --loglevel=error', {
+            cwd: pluginDir,
+            stdio: 'inherit',
+            timeout: 60000 // 60 seconds timeout
+          });
+          console.log(`Dependencies installed successfully for plugin ${pluginName}`);
+        } catch (npmError) {
+          console.error(`Error installing dependencies for plugin ${pluginName}:`, npmError);
+          console.log('Continuing without installing dependencies - plugin may not work correctly');
+        }
+      } else {
+        console.log(`node_modules found for plugin ${pluginName}`);
+      }
+
       // Check if package.json exists and has dependencies
       const packageJsonPath = path.join(pluginDir, 'package.json');
       if (fs.existsSync(packageJsonPath)) {
         try {
           const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+          console.log(`Package.json for plugin ${pluginName}:`, packageJson);
 
           // Check if the plugin has a specific protocol configuration
           const protocol = packageJson.protocol || {};
@@ -515,6 +638,34 @@ export class PluginManager {
 
                 // Add to plugins list
                 this.plugins.set(pluginName, pluginConnection);
+
+                // Đọc thông tin menu items từ package.json nếu có
+                try {
+                  if (packageJson.menuItems && Array.isArray(packageJson.menuItems)) {
+                    console.log(`Found menu items in package.json for ${pluginName}:`, packageJson.menuItems);
+
+                    // Đăng ký các menu items
+                    for (const menuItem of packageJson.menuItems) {
+                      const item: MenuItem = {
+                        ...menuItem,
+                        pluginId: pluginName
+                      };
+                      console.log(`Registering menu item from package.json: ${JSON.stringify(item)}`);
+                      this.menuRegistry.registerMenuItem(item);
+                    }
+
+                    // Thông báo danh sách menu item đã thay đổi
+                    const allMenuItems = this.menuRegistry.getMenuItems();
+                    this.onMenuItemsChanged(allMenuItems);
+
+                    // Gửi thông báo đến renderer process
+                    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                      this.mainWindow.webContents.send('menu-items-changed', allMenuItems);
+                    }
+                  }
+                } catch (menuError) {
+                  console.error(`Error registering menu items from package.json for ${pluginName}:`, menuError);
+                }
 
                 // Notify that the plugin list has changed
                 this.onPluginListChanged(this.getPlugins());
@@ -695,6 +846,8 @@ export class PluginManager {
    * Xử lý thông điệp đăng ký menu từ plugin
    */
   private handleRegisterMenuMessage(socket: Socket, message: RegisterMenuMessage): void {
+    console.log('Received register menu message:', message);
+
     // Tìm plugin từ socket
     let pluginName = '';
     for (const [name, plugin] of this.plugins.entries()) {
@@ -704,8 +857,50 @@ export class PluginManager {
       }
     }
 
+    // Nếu không tìm thấy plugin từ socket, sử dụng tên plugin từ message
+    if (!pluginName && message.payload && message.payload.pluginName) {
+      pluginName = message.payload.pluginName;
+      console.log(`Using plugin name from message: ${pluginName}`);
+
+      // Kiểm tra xem plugin có tồn tại trong danh sách đã đăng ký không
+      if (!this.plugins.has(pluginName)) {
+        console.warn(`Plugin ${pluginName} not found in registered plugins. Attempting to find it...`);
+
+        // Tìm plugin dựa trên tên chuẩn hóa
+        const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+        // Kiểm tra xem plugin có tồn tại với tên chuẩn hóa không
+        if (this.plugins.has(normalizedName)) {
+          pluginName = normalizedName;
+          console.log(`Found plugin with normalized name: ${pluginName}`);
+        } else {
+          // Tìm kiếm plugin dựa trên socket
+          for (const [name, plugin] of this.plugins.entries()) {
+            if (plugin.socket === socket) {
+              pluginName = name;
+              console.log(`Found plugin by socket: ${pluginName}`);
+              break;
+            }
+          }
+        }
+      }
+    }
+
     if (!pluginName) {
       console.warn('Received register menu message from unregistered plugin');
+      console.log('Registered plugins:', Array.from(this.plugins.keys()));
+      console.log('Attempting to start plugin from message payload...');
+
+      if (message.payload && message.payload.pluginName) {
+        const pluginNameFromPayload = message.payload.pluginName;
+        console.log(`Attempting to start plugin: ${pluginNameFromPayload}`);
+
+        // Thử khởi động plugin
+        this.startPlugin(pluginNameFromPayload).catch(error => {
+          console.error(`Failed to start plugin ${pluginNameFromPayload}:`, error);
+        });
+      }
+
       return;
     }
 
@@ -716,16 +911,61 @@ export class PluginManager {
 
     // Đăng ký các menu item mới
     for (const menuItem of message.payload.menuItems) {
+      // Đảm bảo menuItem có đủ thông tin cần thiết
+      if (!menuItem.id) {
+        console.warn(`Menu item from plugin ${pluginName} is missing id, generating one...`);
+        menuItem.id = `${pluginName}.${menuItem.label.toLowerCase().replace(/\s+/g, '-')}`;
+      }
+
+      if (!menuItem.parentMenu) {
+        console.warn(`Menu item ${menuItem.id} is missing parentMenu, defaulting to 'edit'...`);
+        menuItem.parentMenu = 'edit';
+      }
+
+      // Tạo menu item với đầy đủ thông tin
       const item: MenuItem = {
         ...menuItem,
         pluginId: pluginName
       };
 
+      console.log(`Registering menu item: ${JSON.stringify(item)}`);
       this.menuRegistry.registerMenuItem(item);
     }
 
     // Thông báo danh sách menu item đã thay đổi
-    this.onMenuItemsChanged(this.menuRegistry.getMenuItems());
+    const allMenuItems = this.menuRegistry.getMenuItems();
+    console.log(`All registered menu items after update: ${JSON.stringify(allMenuItems.map(item => ({ id: item.id, label: item.label, pluginId: item.pluginId, parentMenu: item.parentMenu })))}`);
+
+    // Lọc menu items theo loại
+    const fileMenuItems = this.getMenuItemsForParent('file');
+    const editMenuItems = this.getMenuItemsForParent('edit');
+    const viewMenuItems = this.getMenuItemsForParent('view');
+
+    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, View menu items: ${viewMenuItems.length}`);
+
+    // Gọi callback để thông báo thay đổi
+    this.onMenuItemsChanged(allMenuItems);
+
+    // Gửi thông báo đến renderer process để cập nhật menu
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      try {
+        console.log('Sending menu-items-changed event to renderer');
+        this.mainWindow.webContents.send('menu-items-changed', allMenuItems);
+
+        // Gửi thông báo cập nhật danh sách plugin để đảm bảo UI được cập nhật
+        const plugins = this.getPlugins();
+        console.log('Sending updated plugin list to renderer');
+        this.mainWindow.webContents.send('plugin-list', plugins.map(p => p.name));
+
+        // Đảm bảo gửi cả danh sách menu items theo loại
+        console.log('Sending specific menu categories to renderer');
+        this.mainWindow.webContents.send('file-menu-items', fileMenuItems);
+        this.mainWindow.webContents.send('edit-menu-items', editMenuItems);
+        this.mainWindow.webContents.send('view-menu-items', viewMenuItems);
+      } catch (error) {
+        console.error('Error sending events to renderer:', error);
+      }
+    }
   }
 
   /**

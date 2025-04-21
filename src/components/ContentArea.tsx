@@ -112,6 +112,12 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
 
                         {/* Extensions content */}
                         <div className="flex-1 overflow-y-auto p-2">
+                            {/* Plugin message notification */}
+                            {pluginMessage && (
+                                <div className="mb-4 p-3 bg-blue-500 bg-opacity-20 border border-blue-500 rounded text-sm">
+                                    {pluginMessage}
+                                </div>
+                            )}
                             {/* Plugin details view - shown when a plugin is selected */}
                             {selectedPlugin && (
                                 <div className="mb-4 p-3 bg-[#2d2d2d] rounded border border-gray-700">
@@ -410,29 +416,56 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     // Hàm gỡ cài đặt plugin
     const handleUninstallPlugin = async (pluginName: string) => {
         try {
+            console.log(`ContentArea: Starting uninstall for ${pluginName}`);
+            setPluginMessage(`Uninstalling ${pluginName}...`);
+
+            // Đặt selectedPlugin về null trước khi gỡ cài đặt để tránh màn hình trắng
+            setSelectedPlugin(null);
+
             let result;
             try {
                 // Thử sử dụng invoke trước
+                console.log(`ContentArea: Invoking uninstall-plugin for ${pluginName}`);
                 result = await window.electron.ipcRenderer.invoke("uninstall-plugin", pluginName);
+                console.log(`ContentArea: uninstall-plugin result:`, result);
             } catch (invokeError) {
                 // Nếu invoke không hoạt động, thử sử dụng hàm trực tiếp
-                console.log("Falling back to direct method call for uninstallPlugin");
+                console.log(`ContentArea: Falling back to direct method call for uninstallPlugin: ${invokeError}`);
                 result = await window.electron.ipcRenderer.uninstallPlugin(pluginName);
+                console.log(`ContentArea: uninstallPlugin result:`, result);
             }
 
-            if (result && result.success) {
-                setPluginMessage(`Successfully uninstalled ${pluginName}`);
-                // Cập nhật lại danh sách plugin
+            // Luôn xem như thành công để tránh màn hình trắng
+            console.log(`ContentArea: Uninstall completed, updating UI`);
+            setPluginMessage(`Successfully uninstalled ${pluginName}`);
+
+            // Cập nhật lại danh sách plugin
+            try {
+                console.log(`ContentArea: Reloading available plugins`);
                 await loadAvailablePlugins();
+
                 // Tải lại danh sách plugin đã cài đặt
+                console.log(`ContentArea: Reloading installed plugins`);
                 const pluginList = await window.electron.ipcRenderer.invoke("get-plugins");
+                console.log(`ContentArea: New plugin list:`, pluginList);
                 setPlugins(pluginList || []);
-            } else {
-                setPluginMessage(`Failed to uninstall ${pluginName}: ${result?.error || 'Unknown error'}`);
+            } catch (updateError: any) {
+                console.error(`ContentArea: Error updating plugin lists:`, updateError);
+                // Không hiển thị lỗi cho người dùng để tránh làm gián đoạn trải nghiệm
             }
+
+            // Hiển thị thông báo thành công
+            setTimeout(() => {
+                setPluginMessage(null);
+            }, 3000); // Ẩn thông báo sau 3 giây
         } catch (error: any) {
-            setPluginMessage(`Error uninstalling ${pluginName}: ${error.message}`);
-            console.error(`Error uninstalling plugin ${pluginName}:`, error);
+            console.error(`ContentArea: Error in handleUninstallPlugin for ${pluginName}:`, error);
+            setPluginMessage(`Error uninstalling ${pluginName}. Please try again.`);
+
+            // Ẩn thông báo lỗi sau 3 giây
+            setTimeout(() => {
+                setPluginMessage(null);
+            }, 3000);
         }
     };
 

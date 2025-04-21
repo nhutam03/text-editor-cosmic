@@ -42,6 +42,11 @@ async function initializePluginManager() {
     // Khởi tạo Plugin Manager
     pluginManager = new PluginManager(PORT);
 
+    // Đặt tham chiếu đến mainWindow
+    if (mainWindow) {
+        pluginManager.setMainWindow(mainWindow);
+    }
+
     // Đăng ký callback khi danh sách plugin thay đổi
     pluginManager.setPluginListChangedCallback((plugins) => {
         if (mainWindow) {
@@ -61,7 +66,19 @@ async function initializePluginManager() {
 }
 
 app.whenReady().then(async () => {
-    createWindow();
+    // Tạo cửa sổ chính trước
+    mainWindow = createWindow();
+
+    // Đợi cửa sổ được tạo hoàn toàn
+    await new Promise<void>((resolve) => {
+        if (mainWindow && mainWindow.webContents && mainWindow.webContents.isLoading()) {
+            mainWindow.webContents.once('did-finish-load', () => resolve());
+        } else {
+            resolve();
+        }
+    });
+
+    // Khởi tạo PluginManager sau khi cửa sổ đã sẵn sàng
     await initializePluginManager();
 
     app.on('activate', () => {
@@ -258,9 +275,278 @@ app.whenReady().then(async () => {
         }
     });
 
+    /**
+     * Cài đặt trực tiếp plugin export-to-pdf
+     */
+    async function installExportToPdfPlugin(event: Electron.IpcMainInvokeEvent): Promise<void> {
+        console.log('Main process: Installing export-to-pdf plugin directly');
+
+        try {
+            // Tạo thư mục plugin
+            const pluginsDir = path.join(app.getPath('userData'), 'plugins');
+            const pluginDir = path.join(pluginsDir, 'export-to-pdf');
+            console.log(`Creating plugin directory at ${pluginDir}`);
+
+            // Đảm bảo thư mục plugins tồn tại
+            if (!fs.existsSync(pluginsDir)) {
+                fs.mkdirSync(pluginsDir, { recursive: true });
+            }
+
+            // Xóa thư mục cũ nếu tồn tại
+            if (fs.existsSync(pluginDir)) {
+                console.log(`Removing existing plugin directory: ${pluginDir}`);
+                fs.rmSync(pluginDir, { recursive: true, force: true });
+            }
+
+            // Tạo thư mục mới
+            fs.mkdirSync(pluginDir, { recursive: true });
+
+            // Tạo file package.json
+            const packageJson = {
+                "name": "export-to-pdf",
+                "version": "1.0.0",
+                "description": "Export document to PDF",
+                "main": "index.js",
+                "author": "nhtam",
+                "dependencies": {
+                    "pdfkit": "^0.13.0"
+                },
+                "menuItems": [
+                    {
+                        "id": "export-to-pdf.exportToPdf",
+                        "label": "Export to PDF",
+                        "parentMenu": "file",
+                        "accelerator": "CmdOrCtrl+E"
+                    }
+                ]
+            };
+
+            // Ghi file package.json
+            fs.writeFileSync(
+                path.join(pluginDir, 'package.json'),
+                JSON.stringify(packageJson, null, 2)
+            );
+
+            // Tạo file index.js
+            const indexJs = `const fs = require('fs');
+const path = require('path');
+const PDFDocument = require('pdfkit');
+const net = require('net');
+
+// Connect to the plugin server
+const client = new net.Socket();
+const PORT = process.argv.find(arg => arg.startsWith('--port='))?.split('=')[1] || 5000;
+
+client.connect(PORT, 'localhost', () => {
+  console.log('Connected to plugin server');
+
+  // Register the plugin
+  client.write(JSON.stringify({
+    type: 'REGISTER',
+    payload: {
+      name: 'export-to-pdf',
+      version: '1.0.0',
+      description: 'Export document to PDF',
+      author: 'nhtam'
+    }
+  }));
+
+  // Register menu items
+  client.write(JSON.stringify({
+    type: 'REGISTER_MENU',
+    payload: {
+      pluginName: 'export-to-pdf',
+      menuItems: [
+        {
+          id: 'export-to-pdf.exportToPdf',
+          label: 'Export to PDF',
+          parentMenu: 'file',
+          accelerator: 'CmdOrCtrl+E'
+        }
+      ]
+    }
+  }));
+});
+
+// Handle data from the server
+client.on('data', (data) => {
+  try {
+    const message = JSON.parse(data.toString());
+    console.log('Received message:', message);
+
+    if (message.type === 'EXECUTE') {
+      const { content, filePath } = message.payload;
+
+      if (!content) {
+        sendResponse(message.id, false, 'No content provided');
+        return;
+      }
+
+      // Generate PDF file path
+      const outputPath = filePath
+        ? filePath.replace(/\.[^.]+$/, '.pdf')
+        : path.join(process.cwd(), 'output.pdf');
+
+      console.log('Generating PDF at:', outputPath);
+
+      // Create PDF document
+      const doc = new PDFDocument();
+      const stream = fs.createWriteStream(outputPath);
+
+      // Pipe PDF to file
+      doc.pipe(stream);
+
+      // Add content to PDF
+      doc.fontSize(12).text(content, {
+        align: 'left'
+      });
+
+      // Finalize PDF
+      doc.end();
+
+      // Wait for PDF to be written
+      stream.on('finish', () => {
+        console.log('PDF created successfully');
+        sendResponse(message.id, true, 'PDF created successfully', { outputPath });
+      });
+
+      stream.on('error', (err) => {
+        console.error('Error creating PDF:', err);
+        sendResponse(message.id, false, 'Error creating PDF: ' + err.message);
+      });
+    }
+  } catch (error) {
+    console.error('Error processing message:', error);
+  }
+});
+
+// Handle connection errors
+client.on('error', (error) => {
+  console.error('Connection error:', error);
+});
+
+// Handle connection close
+client.on('close', () => {
+  console.log('Connection closed');
+});
+
+// Send response back to the server
+function sendResponse(id, success, message, data = null) {
+  client.write(JSON.stringify({
+    id,
+    type: 'RESPONSE',
+    payload: {
+      success,
+      message,
+      data
+    }
+  }));
+}
+`;
+
+            // Ghi file index.js
+            fs.writeFileSync(
+                path.join(pluginDir, 'index.js'),
+                indexJs
+            );
+
+            // Cài đặt dependencies
+            try {
+                const { execSync } = require('child_process');
+                console.log(`Running npm install in ${pluginDir}`);
+                execSync('npm install --no-fund --no-audit --loglevel=error', {
+                    cwd: pluginDir,
+                    stdio: 'inherit',
+                    timeout: 60000 // 60 giây timeout
+                });
+                console.log('Dependencies installed successfully');
+            } catch (npmError) {
+                console.error('Error installing dependencies:', npmError);
+                console.log('Continuing without installing dependencies - plugin may not work correctly');
+            }
+
+            // Cập nhật file extensions.json
+            const extensionsJsonPath = path.join(pluginsDir, '..', 'extensions.json');
+            let extensions: { [key: string]: any } = {};
+
+            // Đọc file extensions.json nếu tồn tại
+            if (fs.existsSync(extensionsJsonPath)) {
+                try {
+                    const content = fs.readFileSync(extensionsJsonPath, 'utf8');
+                    extensions = JSON.parse(content);
+                } catch (err) {
+                    console.error('Error reading extensions.json:', err);
+                    extensions = {};
+                }
+            }
+
+            // Cập nhật trạng thái plugin
+            extensions['export-to-pdf'] = { enabled: true, installedTimestamp: Date.now() };
+
+            // Ghi file extensions.json
+            fs.writeFileSync(extensionsJsonPath, JSON.stringify(extensions, null, 2), 'utf8');
+            console.log(`Updated extensions.json for plugin export-to-pdf, installed: true`);
+
+            // Khởi động plugin
+            try {
+                await pluginManager.startPlugin('export-to-pdf');
+                console.log('Plugin export-to-pdf started successfully');
+            } catch (startError) {
+                console.error('Error starting plugin export-to-pdf:', startError);
+                // Tiếp tục ngay cả khi có lỗi khởi động
+            }
+
+            // Gửi danh sách plugin mới cho renderer
+            const plugins = pluginManager.getPlugins();
+            event.sender.send('plugin-list', plugins.map(p => p.name));
+
+            // Gửi danh sách menu items mới cho renderer
+            setTimeout(() => {
+                try {
+                    // Lấy danh sách menu items cho các menu cha
+                    const fileMenuItems = pluginManager.getMenuItemsForParent('file');
+                    const editMenuItems = pluginManager.getMenuItemsForParent('edit');
+
+                    console.log(`Main process: Sending updated menu items after export-to-pdf installation`);
+                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+
+                    // Gửi danh sách menu items mới cho renderer
+                    const allMenuItems = [...fileMenuItems, ...editMenuItems];
+                    event.sender.send('menu-items-changed', allMenuItems);
+                } catch (menuError) {
+                    console.error(`Main process: Error sending menu items:`, menuError);
+                }
+            }, 1000);
+
+            console.log('Export-to-PDF plugin installed successfully');
+        } catch (error) {
+            console.error('Error installing export-to-pdf plugin directly:', error);
+            throw error;
+        }
+    }
+
     // Cài đặt plugin - Đơn giản hóa tối đa
     ipcMain.handle("install-plugin", async (event, pluginName) => {
         console.log(`Main process: Installing plugin ${pluginName}`);
+
+        // Xử lý đặc biệt cho plugin export-to-pdf
+        if (pluginName === 'export-to-pdf') {
+            console.log('Main process: Using special handling for export-to-pdf plugin');
+            try {
+                // Gọi phương thức cài đặt đặc biệt
+                await installExportToPdfPlugin(event);
+                return {
+                    success: true,
+                    message: `Plugin export-to-pdf installed successfully`
+                };
+            } catch (error: any) {
+                console.error(`Main process: Error installing export-to-pdf plugin:`, error);
+                return {
+                    success: false,
+                    message: `Error installing export-to-pdf plugin: ${error.message || String(error)}`
+                };
+            }
+        }
 
         try {
             // Gọi installPlugin và bắt lỗi
@@ -275,6 +561,24 @@ app.whenReady().then(async () => {
         try {
             const plugins = pluginManager.getPlugins();
             event.sender.send('plugin-list', plugins.map(p => p.name));
+
+            // Gửi danh sách menu items mới cho renderer
+            setTimeout(() => {
+                try {
+                    // Lấy danh sách menu items cho các menu cha
+                    const fileMenuItems = pluginManager.getMenuItemsForParent('file');
+                    const editMenuItems = pluginManager.getMenuItemsForParent('edit');
+
+                    console.log(`Main process: Sending updated menu items after plugin installation`);
+                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+
+                    // Gửi danh sách menu items mới cho renderer
+                    const allMenuItems = [...fileMenuItems, ...editMenuItems];
+                    event.sender.send('menu-items-changed', allMenuItems);
+                } catch (menuError) {
+                    console.error(`Main process: Error sending menu items:`, menuError);
+                }
+            }, 1000); // Đợi 1 giây để plugin có thời gian đăng ký menu items
         } catch (error) {
             console.error(`Main process: Error sending plugin list:`, error);
         }
@@ -302,6 +606,24 @@ app.whenReady().then(async () => {
         try {
             const plugins = pluginManager.getPlugins();
             event.sender.send('plugin-list', plugins.map(p => p.name));
+
+            // Gửi danh sách menu items mới cho renderer
+            setTimeout(() => {
+                try {
+                    // Lấy danh sách menu items cho các menu cha
+                    const fileMenuItems = pluginManager.getMenuItemsForParent('file');
+                    const editMenuItems = pluginManager.getMenuItemsForParent('edit');
+
+                    console.log(`Main process: Sending updated menu items after plugin uninstallation`);
+                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+
+                    // Gửi danh sách menu items mới cho renderer
+                    const allMenuItems = [...fileMenuItems, ...editMenuItems];
+                    event.sender.send('menu-items-changed', allMenuItems);
+                } catch (menuError) {
+                    console.error(`Main process: Error sending menu items:`, menuError);
+                }
+            }, 500);
         } catch (error) {
             console.error(`Main process: Error sending plugin list:`, error);
         }
@@ -342,99 +664,129 @@ app.whenReady().then(async () => {
         }
     });
 
-    // Áp dụng plugin
+    // Export to PDF - Chức năng tích hợp trực tiếp vào ứng dụng
+    ipcMain.on("export-to-pdf", async (event, content: string, filePath?: string) => {
+        try {
+            console.log(`Exporting to PDF, content length: ${content?.length || 0}`);
+
+            // Hiển thị SaveDialog để chọn nơi lưu file
+            const result = await dialog.showSaveDialog(mainWindow!, {
+                title: "Export to PDF",
+                defaultPath: filePath ? filePath.replace(/\.[^.]+$/, '.pdf') : "output.pdf",
+                filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+            }) as unknown as SaveDialogReturnValue;
+
+            if (!result.canceled && result.filePath) {
+                try {
+                    // Sử dụng PDFKit để tạo file PDF
+                    const PDFDocument = require('pdfkit');
+                    const doc = new PDFDocument();
+                    const stream = fs.createWriteStream(result.filePath);
+
+                    // Pipe PDF to file
+                    doc.pipe(stream);
+
+                    // Add content to PDF
+                    doc.fontSize(12).text(content, {
+                        align: 'left'
+                    });
+
+                    // Finalize PDF
+                    doc.end();
+
+                    // Wait for PDF to be written
+                    stream.on('finish', () => {
+                        console.log('PDF created successfully at:', result.filePath);
+                        event.reply("export-to-pdf-result", {
+                            success: true,
+                            message: `File exported successfully to ${result.filePath}`,
+                            filePath: result.filePath
+                        });
+                    });
+
+                    stream.on('error', (err) => {
+                        console.error('Error creating PDF:', err);
+                        event.reply("export-to-pdf-result", {
+                            success: false,
+                            message: `Error creating PDF: ${err.message}`,
+                            error: err
+                        });
+                    });
+                } catch (error: any) {
+                    console.error(`Error creating PDF:`, error);
+
+                    // Fallback to simple text export if PDFKit fails
+                    try {
+                        fs.writeFileSync(result.filePath, content);
+                        event.reply("export-to-pdf-result", {
+                            success: true,
+                            message: `File exported successfully to ${result.filePath} (basic export)`,
+                            filePath: result.filePath
+                        });
+                    } catch (fallbackError: any) {
+                        event.reply("export-to-pdf-result", {
+                            success: false,
+                            message: `Error exporting file: ${fallbackError.message || String(fallbackError)}`,
+                            error: fallbackError
+                        });
+                    }
+                }
+            } else {
+                event.reply("export-to-pdf-result", {
+                    success: false,
+                    message: "Export cancelled by user"
+                });
+            }
+        } catch (error: any) {
+            console.error(`Unexpected error in export-to-pdf handler:`, error);
+            event.reply("export-to-pdf-result", {
+                success: false,
+                message: `Error: ${error.message || String(error)}`,
+                error: error
+            });
+        }
+    });
+
+    // Áp dụng plugin (giữ lại cho các plugin khác)
     ipcMain.on("apply-plugin", async (event, pluginName: string, content: string) => {
         try {
             console.log(`Applying plugin: ${pluginName}`);
 
-            // Xử lý plugin export-to-pdf
-            if (pluginName === "export-to-pdf") {
-                // Hiển thị SaveDialog để chọn nơi lưu file
-                const result = await dialog.showSaveDialog(mainWindow!, {
-                    title: "Export to PDF",
-                    defaultPath: "output.pdf",
-                    filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-                }) as unknown as SaveDialogReturnValue;
+            // Xử lý các plugin khác
+            // Hiển thị SaveDialog để chọn nơi lưu file nếu cần
+            const result = await dialog.showSaveDialog(mainWindow!, {
+                title: "Save Output",
+                defaultPath: "output.pdf",
+                filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+            }) as unknown as SaveDialogReturnValue;
 
-                if (!result.canceled && result.filePath) {
-                    try {
-                        // Kiểm tra xem plugin đã được cài đặt chưa
-                        const installedPlugins = pluginManager.getPlugins().map(p => p.name);
-                        const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+            if (!result.canceled && result.filePath) {
+                try {
+                    // Kiểm tra xem plugin đã được cài đặt chưa
+                    const installedPlugins = pluginManager.getPlugins().map(p => p.name);
+                    const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
 
-                        if (!installedPlugins.includes(pluginName) && !installedPlugins.includes(normalizedName)) {
-                            console.log(`Plugin ${pluginName} is not installed. Attempting to install it...`);
-
-                            try {
-                                // Thử cài đặt plugin
-                                await pluginManager.installPlugin(pluginName);
-                                console.log(`Successfully installed plugin ${pluginName}`);
-                            } catch (installError: any) {
-                                console.error(`Failed to install plugin ${pluginName}:`, installError);
-                                // Tiếp tục với cách đơn giản hơn nếu cài đặt thất bại
-                                fs.writeFileSync(result.filePath, content);
-                                event.reply("plugin-applied", `File exported successfully to ${result.filePath} (basic export)`);
-                                return;
-                            }
-                        }
-
-                        // Thử sử dụng plugin
+                    if (!installedPlugins.includes(pluginName) && !installedPlugins.includes(normalizedName)) {
                         try {
-                            console.log(`Executing plugin ${pluginName} with content length: ${content.length}`);
-                            await pluginManager.executePlugin(pluginName, content, result.filePath);
-                            event.reply("plugin-applied", `File exported successfully to ${result.filePath}`);
-                        } catch (pluginError: any) {
-                            console.error(`Plugin execution failed:`, pluginError);
-
-                            // Nếu plugin không hoạt động, sử dụng cách đơn giản hơn
-                            console.log("Using simple export method as fallback");
-                            fs.writeFileSync(result.filePath, content);
-                            event.reply("plugin-applied", `File exported successfully to ${result.filePath} (basic export)`);
+                            // Thử cài đặt plugin
+                            await pluginManager.installPlugin(pluginName);
+                            console.log(`Successfully installed plugin ${pluginName}`);
+                        } catch (installError: any) {
+                            console.error(`Failed to install plugin ${pluginName}:`, installError);
+                            event.reply("plugin-applied", `Error: Failed to install plugin ${pluginName}: ${installError.message || String(installError)}`);
+                            return;
                         }
-                    } catch (error: any) {
-                        console.error(`Error in apply-plugin handler:`, error);
-                        event.reply("plugin-applied", `Error: ${error.message || String(error)}`);
                     }
-                } else {
-                    event.reply("plugin-applied", "Operation cancelled by user");
+
+                    // Thực thi plugin
+                    await pluginManager.executePlugin(pluginName, content, result.filePath);
+                    event.reply("plugin-applied", `File exported successfully to ${result.filePath}`);
+                } catch (error: any) {
+                    console.error(`Error executing plugin ${pluginName}:`, error);
+                    event.reply("plugin-applied", `Error: ${error.message || String(error)}`);
                 }
             } else {
-                // Xử lý các plugin khác
-                // Hiển thị SaveDialog để chọn nơi lưu file nếu cần
-                const result = await dialog.showSaveDialog(mainWindow!, {
-                    title: "Save Output",
-                    defaultPath: "output.pdf",
-                    filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-                }) as unknown as SaveDialogReturnValue;
-
-                if (!result.canceled && result.filePath) {
-                    try {
-                        // Kiểm tra xem plugin đã được cài đặt chưa
-                        const installedPlugins = pluginManager.getPlugins().map(p => p.name);
-                        const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
-
-                        if (!installedPlugins.includes(pluginName) && !installedPlugins.includes(normalizedName)) {
-                            try {
-                                // Thử cài đặt plugin
-                                await pluginManager.installPlugin(pluginName);
-                                console.log(`Successfully installed plugin ${pluginName}`);
-                            } catch (installError: any) {
-                                console.error(`Failed to install plugin ${pluginName}:`, installError);
-                                event.reply("plugin-applied", `Error: Failed to install plugin ${pluginName}: ${installError.message || String(installError)}`);
-                                return;
-                            }
-                        }
-
-                        // Thực thi plugin
-                        await pluginManager.executePlugin(pluginName, content, result.filePath);
-                        event.reply("plugin-applied", `File exported successfully to ${result.filePath}`);
-                    } catch (error: any) {
-                        console.error(`Error executing plugin ${pluginName}:`, error);
-                        event.reply("plugin-applied", `Error: ${error.message || String(error)}`);
-                    }
-                } else {
-                    event.reply("plugin-applied", "Operation cancelled by user");
-                }
+                event.reply("plugin-applied", "Operation cancelled by user");
             }
         } catch (error: any) {
             console.error(`Unexpected error in apply-plugin handler:`, error);
@@ -445,7 +797,9 @@ app.whenReady().then(async () => {
     // Lấy danh sách menu item cho menu cha cụ thể
     ipcMain.handle("get-menu-items", async (event, parentMenu: string) => {
         try {
-            return pluginManager.getMenuItemsForParent(parentMenu);
+            const menuItems = pluginManager.getMenuItemsForParent(parentMenu);
+            console.log(`Menu items for ${parentMenu}:`, menuItems.map(item => ({ id: item.id, label: item.label, pluginId: item.pluginId })));
+            return menuItems;
         } catch (error) {
             console.error(`Error getting menu items for ${parentMenu}:`, error);
             return [];
@@ -456,31 +810,130 @@ app.whenReady().then(async () => {
     ipcMain.on("execute-menu-action", async (event, menuItemId: string, content: string, filePath?: string) => {
         try {
             console.log(`Executing menu action: ${menuItemId}`);
+            console.log(`Content length: ${content?.length || 0}, filePath: ${filePath || 'none'}`);
 
-            // Tìm menu item tương ứng
-            const menuItems = pluginManager.getMenuItemsForParent('file'); // Tạm thời chỉ lấy từ menu File
-            const menuItem = menuItems.find(item => item.id === menuItemId);
+            // Tìm menu item tương ứng từ tất cả các menu
+            const fileMenuItems = pluginManager.getMenuItemsForParent('file');
+            const editMenuItems = pluginManager.getMenuItemsForParent('edit');
+            const viewMenuItems = pluginManager.getMenuItemsForParent('view');
+
+            console.log(`Found menu items - File: ${fileMenuItems.length}, Edit: ${editMenuItems.length}, View: ${viewMenuItems.length}`);
+            console.log(`File menu items: ${JSON.stringify(fileMenuItems.map(item => ({ id: item.id, label: item.label, pluginId: item.pluginId })))}`);
+            console.log(`Edit menu items: ${JSON.stringify(editMenuItems.map(item => ({ id: item.id, label: item.label, pluginId: item.pluginId })))}`);
+
+            // Kết hợp tất cả menu items
+            const allMenuItems = [...fileMenuItems, ...editMenuItems, ...viewMenuItems];
+            const menuItem = allMenuItems.find(item => item.id === menuItemId);
+            console.log(`Found menu item: ${menuItem ? JSON.stringify(menuItem) : 'null'}`);
+
+            // Kiểm tra danh sách plugin đã đăng ký
+            const registeredPlugins = pluginManager.getPlugins();
+            console.log(`Registered plugins: ${JSON.stringify(registeredPlugins.map(p => p.name))}`);
+
 
             if (!menuItem) {
                 console.error(`Menu item with ID ${menuItemId} not found`);
+
+                // Xử lý trường hợp đặc biệt cho export-to-pdf
+                if (menuItemId === 'export-to-pdf.exportToPdf') {
+                    console.log('Special handling for export-to-pdf plugin');
+                    try {
+                        // Hiển thị SaveDialog để chọn nơi lưu file
+                        const result = await dialog.showSaveDialog(mainWindow!, {
+                            title: "Export to PDF",
+                            defaultPath: "output.pdf",
+                            filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+                        }) as unknown as SaveDialogReturnValue;
+
+                        if (!result.canceled && result.filePath) {
+                            // Thử cài đặt và thực thi plugin export-to-pdf
+                            try {
+                                await installExportToPdfPlugin(event);
+                                await pluginManager.startPlugin('export-to-pdf');
+                                const pdfResult = await pluginManager.executePlugin('export-to-pdf', content, result.filePath);
+                                event.reply("menu-action-result", {
+                                    success: true,
+                                    message: `File exported successfully to ${result.filePath}`,
+                                    data: pdfResult
+                                });
+                            } catch (pluginError) {
+                                console.error('Error using plugin, falling back to simple export:', pluginError);
+                                // Nếu plugin không hoạt động, sử dụng cách đơn giản hơn
+                                fs.writeFileSync(result.filePath, content);
+                                event.reply("menu-action-result", {
+                                    success: true,
+                                    message: `File exported successfully to ${result.filePath} (basic export)`
+                                });
+                            }
+                        } else {
+                            event.reply("menu-action-result", {
+                                success: false,
+                                message: 'Export cancelled by user'
+                            });
+                        }
+                        return;
+                    } catch (exportError: any) {
+                        console.error('Error handling export-to-pdf:', exportError);
+                        event.reply("menu-action-result", {
+                            success: false,
+                            message: `Error exporting to PDF: ${exportError.message || String(exportError)}`
+                        });
+                        return;
+                    }
+                }
+
                 event.reply("menu-action-result", { success: false, message: `Menu item with ID ${menuItemId} not found` });
                 return;
             }
 
-            // Thực thi plugin tương ứng với menu item
-            const result = await pluginManager.executePlugin(
-                menuItem.pluginId,
-                content,
-                filePath
-            );
+            // Lấy plugin ID từ menu item
+            const pluginId = menuItem.pluginId;
+            console.log(`Plugin ID from menu item: ${pluginId}`);
 
-            event.reply("menu-action-result", {
-                success: true,
-                message: `Menu action ${menuItem.label} executed successfully`,
-                data: result
-            });
+            if (!pluginId) {
+                console.error(`Menu item ${menuItemId} does not have a plugin ID`);
+                event.reply("menu-action-result", { success: false, message: `Menu item does not have a plugin ID` });
+                return;
+            }
+
+            // Kiểm tra xem plugin có được đăng ký không
+            const plugin = registeredPlugins.find(p => p.name === pluginId);
+            if (!plugin) {
+                console.error(`Plugin ${pluginId} is not registered`);
+
+                // Thử cài đặt lại plugin
+                try {
+                    console.log(`Attempting to reinstall plugin ${pluginId}...`);
+                    await pluginManager.installPlugin(pluginId);
+                    console.log(`Plugin ${pluginId} reinstalled successfully`);
+                } catch (installError) {
+                    console.error(`Failed to reinstall plugin ${pluginId}:`, installError);
+                    event.reply("menu-action-result", { success: false, message: `Plugin ${pluginId} is not registered and could not be reinstalled` });
+                    return;
+                }
+            }
+
+            // Thực thi plugin
+            try {
+                console.log(`Executing plugin ${pluginId} with content length ${content?.length || 0}`);
+                const result = await pluginManager.executePlugin(pluginId, content, filePath);
+                console.log(`Plugin execution result:`, result);
+
+                // Trả kết quả về renderer
+                event.reply("menu-action-result", {
+                    success: true,
+                    message: `Menu action ${menuItem.label} executed successfully`,
+                    data: result
+                });
+            } catch (executeError: any) {
+                console.error(`Error executing plugin ${pluginId}:`, executeError);
+                event.reply("menu-action-result", {
+                    success: false,
+                    message: `Error executing plugin: ${executeError.message || String(executeError)}`
+                });
+            }
         } catch (error: any) {
-            console.error(`Error executing menu action:`, error);
+            console.error('Error executing menu action:', error);
             event.reply("menu-action-result", {
                 success: false,
                 message: `Error: ${error.message || String(error)}`

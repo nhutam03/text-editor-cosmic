@@ -62,6 +62,12 @@ export class PluginInstaller {
     try {
       console.log(`Installing plugin by name: ${pluginName}`);
 
+      // Xử lý đặc biệt cho export-to-pdf
+      if (pluginName === 'export-to-pdf') {
+        console.log('Using direct installation for export-to-pdf plugin');
+        return await this.installExportToPdfPlugin();
+      }
+
       // Normalize plugin name (remove version suffix if present)
       const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
       console.log(`Normalized plugin name: ${normalizedName}`);
@@ -592,13 +598,227 @@ export class PluginInstaller {
   }
 
   /**
+   * Cài đặt trực tiếp plugin export-to-pdf
+   */
+  private async installExportToPdfPlugin(): Promise<PluginInfo> {
+    try {
+      console.log('Installing export-to-pdf plugin directly');
+
+      // Tạo thư mục plugin
+      const pluginDir = path.join(this.pluginsDir, 'export-to-pdf');
+      console.log(`Creating plugin directory at ${pluginDir}`);
+
+      // Xóa thư mục cũ nếu tồn tại
+      if (fs.existsSync(pluginDir)) {
+        console.log(`Removing existing plugin directory: ${pluginDir}`);
+        fs.rmSync(pluginDir, { recursive: true, force: true });
+      }
+
+      // Tạo thư mục mới
+      fs.mkdirSync(pluginDir, { recursive: true });
+
+      // Tạo file package.json
+      const packageJson = {
+        "name": "export-to-pdf",
+        "version": "1.0.0",
+        "description": "Export document to PDF",
+        "main": "index.js",
+        "author": "nhtam",
+        "dependencies": {
+          "pdfkit": "^0.13.0"
+        },
+        "menuItems": [
+          {
+            "id": "export-to-pdf.exportToPdf",
+            "label": "Export to PDF",
+            "parentMenu": "file",
+            "accelerator": "CmdOrCtrl+E"
+          }
+        ]
+      };
+
+      // Ghi file package.json
+      fs.writeFileSync(
+        path.join(pluginDir, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
+
+      // Tạo file index.js
+      const indexJs = `const fs = require('fs');
+const path = require('path');
+const PDFDocument = require('pdfkit');
+const net = require('net');
+
+// Connect to the plugin server
+const client = new net.Socket();
+const PORT = process.argv.find(arg => arg.startsWith('--port='))?.split('=')[1] || 5000;
+
+client.connect(PORT, 'localhost', () => {
+  console.log('Connected to plugin server');
+
+  // Register the plugin
+  client.write(JSON.stringify({
+    type: 'REGISTER',
+    payload: {
+      name: 'export-to-pdf',
+      version: '1.0.0',
+      description: 'Export document to PDF',
+      author: 'nhtam'
+    }
+  }));
+
+  // Register menu items
+  client.write(JSON.stringify({
+    type: 'REGISTER_MENU',
+    payload: {
+      pluginName: 'export-to-pdf',
+      menuItems: [
+        {
+          id: 'export-to-pdf.exportToPdf',
+          label: 'Export to PDF',
+          parentMenu: 'file',
+          accelerator: 'CmdOrCtrl+E'
+        }
+      ]
+    }
+  }));
+});
+
+// Handle data from the server
+client.on('data', (data) => {
+  try {
+    const message = JSON.parse(data.toString());
+    console.log('Received message:', message);
+
+    if (message.type === 'EXECUTE') {
+      const { content, filePath } = message.payload;
+
+      if (!content) {
+        sendResponse(message.id, false, 'No content provided');
+        return;
+      }
+
+      // Generate PDF file path
+      const outputPath = filePath
+        ? filePath.replace(/\.[^.]+$/, '.pdf')
+        : path.join(process.cwd(), 'output.pdf');
+
+      console.log('Generating PDF at:', outputPath);
+
+      // Create PDF document
+      const doc = new PDFDocument();
+      const stream = fs.createWriteStream(outputPath);
+
+      // Pipe PDF to file
+      doc.pipe(stream);
+
+      // Add content to PDF
+      doc.fontSize(12).text(content, {
+        align: 'left'
+      });
+
+      // Finalize PDF
+      doc.end();
+
+      // Wait for PDF to be written
+      stream.on('finish', () => {
+        console.log('PDF created successfully');
+        sendResponse(message.id, true, 'PDF created successfully', { outputPath });
+      });
+
+      stream.on('error', (err) => {
+        console.error('Error creating PDF:', err);
+        sendResponse(message.id, false, 'Error creating PDF: ' + err.message);
+      });
+    }
+  } catch (error) {
+    console.error('Error processing message:', error);
+  }
+});
+
+// Handle connection errors
+client.on('error', (error) => {
+  console.error('Connection error:', error);
+});
+
+// Handle connection close
+client.on('close', () => {
+  console.log('Connection closed');
+});
+
+// Send response back to the server
+function sendResponse(id, success, message, data = null) {
+  client.write(JSON.stringify({
+    id,
+    type: 'RESPONSE',
+    payload: {
+      success,
+      message,
+      data
+    }
+  }));
+}
+`;
+
+      // Ghi file index.js
+      fs.writeFileSync(
+        path.join(pluginDir, 'index.js'),
+        indexJs
+      );
+
+      // Cài đặt dependencies
+      try {
+        const { execSync } = require('child_process');
+        console.log(`Running npm install in ${pluginDir}`);
+        execSync('npm install --no-fund --no-audit --loglevel=error', {
+          cwd: pluginDir,
+          stdio: 'inherit',
+          timeout: 60000 // 60 giây timeout
+        });
+        console.log('Dependencies installed successfully');
+      } catch (npmError) {
+        console.error('Error installing dependencies:', npmError);
+        console.log('Continuing without installing dependencies - plugin may not work correctly');
+      }
+
+      // Cập nhật file extensions.json
+      this.updateExtensionsJson('export-to-pdf', true);
+
+      // Tạo thông tin plugin
+      const pluginInfo: PluginInfo = {
+        name: 'export-to-pdf',
+        version: '1.0.0',
+        description: 'Export document to PDF',
+        author: 'nhtam',
+        installed: true
+      };
+
+      // Lưu thông tin plugin
+      this.installedPlugins.set(pluginInfo.name, pluginInfo);
+
+      console.log(`Plugin info: ${JSON.stringify(pluginInfo)}`);
+      return pluginInfo;
+    } catch (error) {
+      console.error('Error installing export-to-pdf plugin directly:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get a list of installed plugins
    */
   public getInstalledPlugins(): PluginInfo[] {
     // Refresh the list of installed plugins
     this.refreshInstalledPlugins();
 
-    return Array.from(this.installedPlugins.values());
+    // Đảm bảo tất cả các plugin được đánh dấu là đã cài đặt
+    const plugins = Array.from(this.installedPlugins.values());
+    for (const plugin of plugins) {
+      plugin.installed = true;
+    }
+
+    console.log('getInstalledPlugins returning:', plugins.map(p => `${p.name} (installed: ${p.installed})`))
+    return plugins;
   }
 
   /**
@@ -658,7 +878,8 @@ export class PluginInstaller {
               name: pluginName,
               version: packageJson.version || '1.0.0',
               description: packageJson.description || 'No description provided',
-              author: packageJson.author || 'Unknown'
+              author: packageJson.author || 'Unknown',
+              installed: true
             };
 
             this.installedPlugins.set(pluginInfo.name, pluginInfo);

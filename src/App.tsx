@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showEditMenu, setShowEditMenu] = useState(false);
   const [showViewMenu, setShowViewMenu] = useState(false);
+  // Vẫn giữ lại state này để sử dụng cho các plugin khác
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
   const [editorStats, setEditorStats] = useState({
@@ -175,13 +176,32 @@ const App: React.FC = () => {
     closeAllMenus();
   };
 
-  // Hàm xử lý Export to PDF
+  // Hàm xử lý Export to PDF - Chức năng tích hợp trực tiếp
   const handleExportToPdf = () => {
+    console.log('handleExportToPdf called');
+
     if (activeFile && currentContent !== undefined) {
       console.log('Exporting to PDF:', activeFile, 'Content length:', currentContent.length);
 
-      // Gọi plugin export-to-pdf để xử lý
-      window.electron.ipcRenderer.send('apply-plugin', 'export-to-pdf', currentContent);
+      // Hủy đăng ký listener cũ trước khi đăng ký mới
+      window.electron.ipcRenderer.removeAllListeners('export-to-pdf-result');
+
+      // Đăng ký listener mới
+      window.electron.ipcRenderer.on('export-to-pdf-result', (_event: any, result: any) => {
+        if (result.success) {
+          console.log('Export to PDF successful:', result.message);
+          // Hiển thị thông báo thành công
+          alert(result.message);
+        } else {
+          console.error('Export to PDF failed:', result.message);
+          // Hiển thị thông báo lỗi
+          alert(`Export to PDF failed: ${result.message}`);
+        }
+      });
+
+      // Sử dụng chức năng export-to-pdf tích hợp trực tiếp
+      console.log('Using built-in Export to PDF function');
+      window.electron.ipcRenderer.send('export-to-pdf', currentContent, activeFile);
     } else {
       // Hiển thị thông báo nếu không có file nào đang mở
       alert('No file is currently open. Please open a file before exporting to PDF.');
@@ -293,6 +313,26 @@ const App: React.FC = () => {
         e.preventDefault();
         handleNewFile();
       }
+      // Ctrl+E để Export to PDF
+      if (e.ctrlKey && e.key === 'e') {
+        e.preventDefault();
+        handleExportToPdf();
+      }
+      // Shift+Alt+F để định dạng mã với Prettier
+      if (e.shiftKey && e.altKey && e.key === 'F') {
+        e.preventDefault();
+        // Tìm menu item Format Document
+        const formatMenuItem = pluginMenuItems.find(
+          item => item.id === 'prettier-plugin.formatDocument' && item.parentMenu.toLowerCase() === 'edit'
+        );
+
+        if (formatMenuItem && activeFile && currentContent) {
+          console.log('Executing Format Document shortcut');
+          window.electron.ipcRenderer.executeMenuAction(formatMenuItem.id, currentContent, activeFile);
+        } else {
+          console.log('Format Document menu item not found or no active file');
+        }
+      }
       // Esc để đóng tất cả menu
       if (e.key === 'Escape') {
         closeAllMenus();
@@ -301,11 +341,30 @@ const App: React.FC = () => {
 
     // Xử lý click bên ngoài menu để đóng menu
     const handleClickOutside = (e: MouseEvent) => {
+      // Kiểm tra xem click có phải là trên menu item không
+      const target = e.target as HTMLElement;
+      const isMenuItemClick = target.closest('.menu-item');
+
+      // Nếu là click trên menu item, không đóng menu
+      if (isMenuItemClick) {
+        console.log('Click on menu item detected, not closing menu');
+        return;
+      }
+
+      // Kiểm tra xem click có phải là trên menu header không
+      const isMenuHeaderClick = target.closest('.menu-header');
+      if (isMenuHeaderClick) {
+        console.log('Click on menu header detected');
+        return;
+      }
+
+      // Nếu click bên ngoài menu, đóng menu
       if (
         fileMenuRef.current && !fileMenuRef.current.contains(e.target as Node) &&
         editMenuRef.current && !editMenuRef.current.contains(e.target as Node) &&
         viewMenuRef.current && !viewMenuRef.current.contains(e.target as Node)
       ) {
+        console.log('Click outside menu detected, closing all menus');
         closeAllMenus();
       }
     };
@@ -316,7 +375,7 @@ const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [handleSaveFile, handleOpenFile, handleNewFile, toggleTerminal, closeAllMenus]);
+  }, [handleSaveFile, handleOpenFile, handleNewFile, toggleTerminal, closeAllMenus, pluginMenuItems, activeFile, currentContent]);
 
   // Lấy danh sách plugins đã cài đặt
   useEffect(() => {
@@ -326,7 +385,7 @@ const App: React.FC = () => {
         setInstalledPlugins(plugins || []);
 
         // Đăng ký lắng nghe sự kiện khi danh sách plugin thay đổi
-        window.electron.ipcRenderer.on("plugin-list", (event, pluginList) => {
+        window.electron.ipcRenderer.on("plugin-list", (_event, pluginList) => {
           setInstalledPlugins(pluginList || []);
         });
       } catch (error) {
@@ -477,6 +536,7 @@ const App: React.FC = () => {
       window.electron.ipcRenderer.removeAllListeners('file-content');
       window.electron.ipcRenderer.removeAllListeners('file-saved');
       window.electron.ipcRenderer.removeAllListeners('folder-structure');
+      window.electron.ipcRenderer.removeAllListeners('export-to-pdf-result');
     };
   }, [openFiles, modifiedFiles, activeFile, currentContent]); // Include dependencies to ensure handlers have access to latest state
 
@@ -491,37 +551,75 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.on('menu-items-changed', handleMenuItemsChanged);
     window.electron.ipcRenderer.on('menu-action-result', handleMenuActionResult);
 
-    // Load plugin menu items for File menu
+    // Load plugin menu items for File and Edit menus
     loadPluginMenuItems('file');
+    loadPluginMenuItems('edit');
 
     return () => {
       window.electron.ipcRenderer.removeAllListeners('plugin-list');
       window.electron.ipcRenderer.removeAllListeners('menu-items-changed');
       window.electron.ipcRenderer.removeAllListeners('menu-action-result');
     };
-  }, []);
+  }, [activeFile, currentContent]); // Add dependencies to ensure handler has access to latest state
 
-  const handlePluginListUpdate = (event: any, plugins: string[]) => {
+  const handlePluginListUpdate = (_event: any, plugins: string[]) => {
     console.log('Plugin list updated:', plugins);
     setInstalledPlugins(plugins || []);
 
     // Reload plugin menu items when plugin list changes
-    loadPluginMenuItems('file');
+    setTimeout(() => {
+      console.log('Reloading menu items after plugin list update');
+      loadPluginMenuItems('file');
+      loadPluginMenuItems('edit');
+    }, 500); // Đợi 500ms để đảm bảo plugin đã đăng ký menu items
   };
 
-  const handleMenuItemsChanged = (event: any, menuItems: MenuItem[]) => {
+  const handleMenuItemsChanged = (_event: any, menuItems: MenuItem[]) => {
     console.log('Menu items changed:', menuItems);
-    setPluginMenuItems(menuItems || []);
+    if (menuItems && menuItems.length > 0) {
+      // Cập nhật trực tiếp danh sách menu items
+      setPluginMenuItems(menuItems);
+
+      // Hiển thị thông tin chi tiết về các menu items
+      const fileMenuItems = menuItems.filter(item => item.parentMenu.toLowerCase() === 'file');
+      const editMenuItems = menuItems.filter(item => item.parentMenu.toLowerCase() === 'edit');
+
+      console.log('File menu items:', fileMenuItems.map(item => `${item.label} (${item.id})`))
+      console.log('Edit menu items:', editMenuItems.map(item => `${item.label} (${item.id})`))
+
+      // Reload menu items to ensure they are properly displayed
+      setTimeout(() => {
+        loadPluginMenuItems('file');
+        loadPluginMenuItems('edit');
+      }, 100);
+    }
   };
 
-  const handleMenuActionResult = (event: any, result: { success: boolean, message: string, data?: any }) => {
+  const handleMenuActionResult = (_event: any, result: { success: boolean, message: string, data?: any }) => {
     console.log('Menu action result:', result);
     if (result.success) {
       // Handle successful menu action
       console.log('Menu action executed successfully:', result.message);
+
+      // Check if the result contains formatted text (from Prettier plugin)
+      if (result.data && result.data.formattedText !== undefined) {
+        console.log('Updating editor content with formatted text');
+        // Update the editor content with the formatted text
+        setCurrentContent(result.data.formattedText);
+
+        // If this is a saved file, update the original content to avoid showing it as modified
+        if (activeFile && !activeFile.startsWith('new-file-')) {
+          setOriginalContent(prev => ({
+            ...prev,
+            [activeFile]: result.data.formattedText
+          }));
+        }
+      }
     } else {
       // Handle failed menu action
       console.error('Menu action failed:', result.message);
+      // Show error message to user
+      alert(`Error: ${result.message}`);
     }
   };
 
@@ -529,10 +627,18 @@ const App: React.FC = () => {
     try {
       const menuItems = await window.electron.ipcRenderer.getMenuItems(parentMenu);
       console.log(`Menu items for ${parentMenu}:`, menuItems);
-      setPluginMenuItems(menuItems || []);
+
+      // Merge with existing menu items from other menus
+      setPluginMenuItems(prevItems => {
+        // Filter out items from the current menu (we'll replace them)
+        const otherMenuItems = prevItems.filter(item => item.parentMenu.toLowerCase() !== parentMenu.toLowerCase());
+        // Add the new menu items
+        const newItems = [...otherMenuItems, ...(menuItems || [])];
+        console.log(`Updated plugin menu items:`, newItems);
+        return newItems;
+      });
     } catch (error) {
       console.error(`Error loading menu items for ${parentMenu}:`, error);
-      setPluginMenuItems([]);
     }
   };
 
@@ -556,7 +662,7 @@ const App: React.FC = () => {
         <div className="flex space-x-4 relative">
           <div className="relative">
             <span
-              className="hover:bg-[#505050] px-2 py-1 cursor-pointer"
+              className="hover:bg-[#505050] px-2 py-1 cursor-pointer menu-header"
               onClick={toggleFileMenu}
               ref={fileMenuRef}
             >
@@ -566,36 +672,39 @@ const App: React.FC = () => {
               <div className="absolute top-full left-0 bg-[#252526] shadow-lg z-50 w-48">
                 <div className="p-1">
                   <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                     onClick={handleNewFile}
                   >
                     <FilePlus size={16} className="mr-2" />
                     <span>New File</span>
                   </div>
                   <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                     onClick={handleOpenFile}
                   >
                     <FolderOpen size={16} className="mr-2" />
                     <span>Open File...</span>
                   </div>
                   <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                     onClick={handleSaveFile}
                   >
                     <Save size={16} className="mr-2" />
                     <span>Save</span>
                   </div>
-                  {/* Chỉ hiển thị Export to PDF khi plugin đã được cài đặt */}
-                  {installedPlugins.includes("export-to-pdf") && (
-                    <div
-                      className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
-                      onClick={handleExportToPdf}
-                    >
-                      <FileText size={16} className="mr-2" />
-                      <span>Export to PDF</span>
-                    </div>
-                  )}
+                  {/* Luôn hiển thị Export to PDF vì đã là chức năng tích hợp */}
+                  <div
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      console.log('Export to PDF menu item clicked');
+                      handleExportToPdf();
+                    }}
+                  >
+                    <FileText size={16} className="mr-2" />
+                    <span>Export to PDF</span>
+                    <span className="ml-auto text-xs text-gray-400">Ctrl+E</span>
+                  </div>
 
                   {/* Hiển thị các menu item từ plugin */}
                   {pluginMenuItems
@@ -603,7 +712,7 @@ const App: React.FC = () => {
                     .map(menuItem => (
                       <div
                         key={menuItem.id}
-                        className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                        className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                         onClick={() => handlePluginMenuItemClick(menuItem)}
                       >
                         {menuItem.icon ? (
@@ -612,6 +721,9 @@ const App: React.FC = () => {
                           <FileText size={16} className="mr-2" />
                         )}
                         <span>{menuItem.label}</span>
+                        {menuItem.shortcut && (
+                          <span className="ml-auto text-xs text-gray-400">{menuItem.shortcut}</span>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -620,7 +732,7 @@ const App: React.FC = () => {
           </div>
           <div className="relative">
             <span
-              className="hover:bg-[#505050] px-2 py-1 cursor-pointer"
+              className="hover:bg-[#505050] px-2 py-1 cursor-pointer menu-header"
               onClick={toggleEditMenu}
               ref={editMenuRef}
             >
@@ -630,33 +742,54 @@ const App: React.FC = () => {
               <div className="absolute top-full left-0 bg-[#252526] shadow-lg z-50 w-48">
                 <div className="p-1">
                   <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                     onClick={handleCopy}
                   >
                     <Copy size={16} className="mr-2" />
                     <span>Copy</span>
                   </div>
                   <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                     onClick={handlePaste}
                   >
                     <Clipboard size={16} className="mr-2" />
                     <span>Paste</span>
                   </div>
                   <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                     onClick={handleCut}
                   >
                     <Scissors size={16} className="mr-2" />
                     <span>Cut</span>
                   </div>
+
+                  {/* Display plugin menu items for Edit menu */}
+                  {pluginMenuItems
+                    .filter(item => item.parentMenu.toLowerCase() === 'edit')
+                    .map(menuItem => (
+                      <div
+                        key={menuItem.id}
+                        className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
+                        onClick={() => handlePluginMenuItemClick(menuItem)}
+                      >
+                        {menuItem.icon ? (
+                          <span className="mr-2">{menuItem.icon}</span>
+                        ) : (
+                          <FileText size={16} className="mr-2" />
+                        )}
+                        <span>{menuItem.label}</span>
+                        {menuItem.shortcut && (
+                          <span className="ml-auto text-xs text-gray-400">{menuItem.shortcut}</span>
+                        )}
+                      </div>
+                    ))}
                 </div>
               </div>
             )}
           </div>
           <div className="relative">
             <span
-              className="hover:bg-[#505050] px-2 py-1 cursor-pointer"
+              className="hover:bg-[#505050] px-2 py-1 cursor-pointer menu-header"
               onClick={toggleViewMenu}
               ref={viewMenuRef}
             >
@@ -666,13 +799,13 @@ const App: React.FC = () => {
               <div className="absolute top-full left-0 bg-[#252526] shadow-lg z-50 w-48">
                 <div className="p-1">
                   <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                     onClick={toggleTerminal}
                   >
                     <span>Toggle Terminal</span>
                   </div>
                   <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
                     onClick={() => {
                       toggleRightSidebar();
                       closeAllMenus();
