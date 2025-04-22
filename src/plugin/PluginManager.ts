@@ -359,12 +359,13 @@ export class PluginManager {
               // Lấy danh sách menu items cho các menu cha
               const fileMenuItems = this.getMenuItemsForParent('file');
               const editMenuItems = this.getMenuItemsForParent('edit');
+              const runMenuItems = this.getMenuItemsForParent('run');
 
               console.log(`PluginManager: Sending updated menu items after plugin installation`);
-              console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+              console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`);
 
               // Thông báo thay đổi menu items
-              this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems]);
+              this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems, ...runMenuItems]);
             } catch (menuError) {
               console.error(`PluginManager: Error sending menu items:`, menuError);
             }
@@ -394,12 +395,13 @@ export class PluginManager {
           // Lấy danh sách menu items cho các menu cha
           const fileMenuItems = this.getMenuItemsForParent('file');
           const editMenuItems = this.getMenuItemsForParent('edit');
+          const runMenuItems = this.getMenuItemsForParent('run');
 
           console.log(`PluginManager: Sending updated menu items after plugin installation`);
-          console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+          console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`);
 
           // Thông báo thay đổi menu items
-          this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems]);
+          this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems, ...runMenuItems]);
         } catch (menuError) {
           console.error(`PluginManager: Error sending menu items:`, menuError);
         }
@@ -478,12 +480,13 @@ export class PluginManager {
           // Lấy danh sách menu items cho các menu cha
           const fileMenuItems = this.getMenuItemsForParent('file');
           const editMenuItems = this.getMenuItemsForParent('edit');
+          const runMenuItems = this.getMenuItemsForParent('run');
 
           console.log(`PluginManager: Sending updated menu items after plugin uninstallation`);
-          console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+          console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`);
 
           // Thông báo thay đổi menu items
-          this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems]);
+          this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems, ...runMenuItems]);
         } catch (menuError) {
           console.error(`PluginManager: Error sending menu items:`, menuError);
         }

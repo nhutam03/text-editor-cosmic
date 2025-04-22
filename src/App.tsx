@@ -83,6 +83,8 @@ const App: React.FC = () => {
   };
   const loadFileContent = (fileName: string) => {
     console.log('Loading file content for:', fileName);
+
+    // Gửi yêu cầu mở file
     window.electron.ipcRenderer.send('open-file-request', fileName);
   };
 
@@ -265,8 +267,14 @@ const App: React.FC = () => {
     if (activeFile) {
       const extension = activeFile.split('.').pop()?.toLowerCase();
 
+      // Xử lý đặc biệt cho file C++
+      let language = extension;
+      if (extension === 'cpp' || extension === 'cc' || extension === 'cxx' || extension === 'c++') {
+        language = 'cpp';
+      }
+
       // Thêm output vào terminal
-      setTerminalOutput(`$ Running ${activeFile}...\n[${new Date().toLocaleTimeString()}] Starting execution...\n[${new Date().toLocaleTimeString()}] Processing file: ${activeFile}\n[${new Date().toLocaleTimeString()}] Execution completed successfully.`);
+      setTerminalOutput(`$ Running ${activeFile}...\n[${new Date().toLocaleTimeString()}] Starting execution...\n[${new Date().toLocaleTimeString()}] Processing file: ${activeFile}\n`);
 
       // Hiển thị terminal nếu chưa hiển thị
       if (!showTerminal) {
@@ -280,10 +288,15 @@ const App: React.FC = () => {
       setIsRunning(true);
 
       // Gọi hàm chạy code tương ứng với ngôn ngữ
+      console.log(`Sending file content for: ${activeFile}`);
+      console.log(`Menu items for file: ${JSON.stringify(pluginMenuItems.filter(item => item.parentMenu.toLowerCase() === 'file').map(item => item.label))}`);
+      console.log(`Menu items for edit: ${JSON.stringify(pluginMenuItems.filter(item => item.parentMenu.toLowerCase() === 'edit').map(item => item.label))}`);
+      console.log(`Running code in ${language} language, code length: ${currentContent?.length || 0}`);
+
       window.electron.ipcRenderer.send('run-code', {
         code: currentContent,
         fileName: activeFile,
-        language: extension
+        language: language
       });
     } else {
       alert('No file is currently open. Please open a file before running code.');
@@ -671,9 +684,10 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.on('menu-items-changed', handleMenuItemsChanged);
     window.electron.ipcRenderer.on('menu-action-result', handleMenuActionResult);
 
-    // Load plugin menu items for File and Edit menus
+    // Load plugin menu items for File, Edit and Run menus
     loadPluginMenuItems('file');
     loadPluginMenuItems('edit');
+    loadPluginMenuItems('run');
 
     return () => {
       window.electron.ipcRenderer.removeAllListeners('plugin-list');
@@ -691,6 +705,7 @@ const App: React.FC = () => {
       console.log('Reloading menu items after plugin list update');
       loadPluginMenuItems('file');
       loadPluginMenuItems('edit');
+      loadPluginMenuItems('run');
     }, 500); // Đợi 500ms để đảm bảo plugin đã đăng ký menu items
   };
 
@@ -703,14 +718,17 @@ const App: React.FC = () => {
       // Hiển thị thông tin chi tiết về các menu items
       const fileMenuItems = menuItems.filter(item => item.parentMenu.toLowerCase() === 'file');
       const editMenuItems = menuItems.filter(item => item.parentMenu.toLowerCase() === 'edit');
+      const runMenuItems = menuItems.filter(item => item.parentMenu.toLowerCase() === 'run');
 
       console.log('File menu items:', fileMenuItems.map(item => `${item.label} (${item.id})`))
       console.log('Edit menu items:', editMenuItems.map(item => `${item.label} (${item.id})`))
+      console.log('Run menu items:', runMenuItems.map(item => `${item.label} (${item.id})`))
 
       // Reload menu items to ensure they are properly displayed
       setTimeout(() => {
         loadPluginMenuItems('file');
         loadPluginMenuItems('edit');
+        loadPluginMenuItems('run');
       }, 100);
     }
   };
@@ -974,6 +992,27 @@ const App: React.FC = () => {
                     <span>Stop Execution</span>
                     <span className="ml-auto text-xs text-gray-400">Shift+F5</span>
                   </div>
+
+                  {/* Hiển thị các menu item từ plugin */}
+                  {pluginMenuItems
+                    .filter(item => item.parentMenu.toLowerCase() === 'run')
+                    .map(menuItem => (
+                      <div
+                        key={menuItem.id}
+                        className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
+                        onClick={() => handlePluginMenuItemClick(menuItem)}
+                      >
+                        {menuItem.icon ? (
+                          <span className="mr-2">{menuItem.icon}</span>
+                        ) : (
+                          <Play size={16} className="mr-2" />
+                        )}
+                        <span>{menuItem.label}</span>
+                        {menuItem.accelerator && (
+                          <span className="ml-auto text-xs text-gray-400">{menuItem.accelerator}</span>
+                        )}
+                      </div>
+                    ))}
                 </div>
               </div>
             )}
@@ -1078,6 +1117,7 @@ const App: React.FC = () => {
                     onStatsChange={updateEditorStats}
                     currentContent={currentContent}
                     activeFile={activeFile}
+                    editorStats={editorStats}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full text-gray-400">

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import MonacoEditor from '@monaco-editor/react';
+import MonacoEditor, { monaco } from '@monaco-editor/react';
 import { IpcRendererEvent } from 'electron';
 
 interface EditorProps {
@@ -8,9 +8,10 @@ interface EditorProps {
     onStatsChange?: (stats: any) => void;
     currentContent?: string; // Add prop for current content
     activeFile?: string; // Add prop for active file
+    editorStats?: any; // Add prop for editor stats from parent
 }
 
-const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStatsChange, currentContent, activeFile: propActiveFile }) => {
+const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStatsChange, currentContent, activeFile: propActiveFile, editorStats }) => {
     const [editor, setEditor] = useState<any>(null);
     const [openFiles, setOpenFiles] = useState<string[]>([]);
     // Use the activeFile prop from parent if available, otherwise use local state
@@ -47,6 +48,18 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
     // Update activeFile when propActiveFile changes
     useEffect(() => {
         setActiveFile(propActiveFile || null);
+
+        // Xác định ngôn ngữ dựa trên phần mở rộng của file
+        if (propActiveFile) {
+            const extension = propActiveFile.split('.').pop()?.toLowerCase() || '';
+            const detectedLanguage = getLanguageFromExtension(extension);
+            console.log('Detected language for', propActiveFile, ':', detectedLanguage);
+            setLanguage(detectedLanguage);
+            setStats(prev => ({
+                ...prev,
+                language: detectedLanguage
+            }));
+        }
     }, [propActiveFile]);
 
     // State cho StatusBar component - để tương thích với component StatusBar
@@ -78,7 +91,7 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
         }));
     };
 
-    const handleEditorDidMount = (editor: any) => {
+    const handleEditorDidMount = (editor: any, monacoInstance: any) => {
         setEditor(editor);
 
         editor.onDidChangeCursorPosition((e: any) => {
@@ -91,6 +104,7 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
 
         // Theo dõi các thay đổi về ngôn ngữ
         editor.onDidChangeModelLanguage((e: any) => {
+            console.log('Language changed to:', e.newLanguage);
             setLanguage(e.newLanguage);
             setStats(prev => ({
                 ...prev,
@@ -99,9 +113,27 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
         });
 
         // Cập nhật thông tin ban đầu
+        const currentLanguage = editor.getModel()?.getLanguageId() || 'plaintext';
+        console.log('Initial language:', currentLanguage);
+
+        // Nếu activeFile tồn tại, xác định ngôn ngữ dựa trên phần mở rộng
+        if (propActiveFile) {
+            const extension = propActiveFile.split('.').pop()?.toLowerCase() || '';
+            const detectedLanguage = getLanguageFromExtension(extension);
+            console.log('Setting language for', propActiveFile, 'to', detectedLanguage);
+
+            // Đặt ngôn ngữ cho editor
+            const model = editor.getModel();
+            if (model && monacoInstance) {
+                monacoInstance.editor.setModelLanguage(model, detectedLanguage);
+            }
+
+            setLanguage(detectedLanguage);
+        }
+
         setStats(prev => ({
             ...prev,
-            language: editor.getModel()?.getLanguageId() || 'text',
+            language: currentLanguage,
             spaces: editor.getModel()?.getOptions().tabSize || 2
         }));
     };
@@ -120,25 +152,128 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
     };
     // Hàm xác định ngôn ngữ dựa trên phần mở rộng file
     const getLanguageFromExtension = (extension: string): string => {
-        switch (extension) {
-            case 'js':
-            case 'jsx':
-                return 'javascript';
-            case 'ts':
-            case 'tsx':
-                return 'typescript';
-            case 'py':
-                return 'python';
-            case 'json':
-                return 'json';
-            case 'html':
-                return 'html';
-            case 'css':
-                return 'css';
-            case 'txt':
-            default:
-                return 'text';
-        }
+        // Sử dụng bảng ánh xạ để dễ dàng thêm các ngôn ngữ mới
+        const languageMap: Record<string, string> = {
+            // JavaScript
+            'js': 'javascript',
+            'jsx': 'javascript',
+            'mjs': 'javascript',
+            'cjs': 'javascript',
+
+            // TypeScript
+            'ts': 'typescript',
+            'tsx': 'typescript',
+            'mts': 'typescript',
+            'cts': 'typescript',
+
+            // Python
+            'py': 'python',
+            'pyw': 'python',
+            'pyi': 'python',
+            'pyx': 'python',
+
+            // Web
+            'html': 'html',
+            'htm': 'html',
+            'xhtml': 'html',
+            'css': 'css',
+            'scss': 'scss',
+            'less': 'less',
+            'json': 'json',
+            'jsonc': 'jsonc',
+            'xml': 'xml',
+            'svg': 'xml',
+
+            // Markdown
+            'md': 'markdown',
+            'markdown': 'markdown',
+
+            // C/C++
+            'c': 'c',
+            'h': 'c',
+            'cpp': 'cpp',  // Monaco sử dụng 'cpp' cho C++
+            'hpp': 'cpp',
+            'cc': 'cpp',
+            'cxx': 'cpp',
+            'c++': 'cpp',
+            'hxx': 'cpp',
+            'h++': 'cpp',
+
+            // C#
+            'cs': 'csharp',
+
+            // Java
+            'java': 'java',
+
+            // PHP
+            'php': 'php',
+
+            // Ruby
+            'rb': 'ruby',
+
+            // Go
+            'go': 'go',
+
+            // Rust
+            'rs': 'rust',
+
+            // Shell
+            'sh': 'shell',
+            'bash': 'shell',
+            'zsh': 'shell',
+
+            // SQL
+            'sql': 'sql',
+
+            // YAML
+            'yml': 'yaml',
+            'yaml': 'yaml',
+
+            // Text
+            'txt': 'plaintext',
+            'text': 'plaintext',
+            'log': 'plaintext',
+
+            // Lua
+            'lua': 'lua',
+
+            // PowerShell
+            'ps1': 'powershell',
+            'psm1': 'powershell',
+            'psd1': 'powershell',
+
+            // Perl
+            'pl': 'perl',
+            'pm': 'perl',
+
+            // R
+            'r': 'r',
+
+            // Swift
+            'swift': 'swift',
+
+            // Objective-C
+            'm': 'objective-c',
+            'mm': 'objective-c',
+
+            // Kotlin
+            'kt': 'kotlin',
+            'kts': 'kotlin',
+
+            // Dart
+            'dart': 'dart',
+
+            // Scala
+            'scala': 'scala',
+            'sc': 'scala',
+
+            // Haskell
+            'hs': 'haskell',
+            'lhs': 'haskell',
+        };
+
+        // Trả về ngôn ngữ tương ứng hoặc plaintext nếu không tìm thấy
+        return languageMap[extension.toLowerCase()] || 'plaintext';
     };
     const handleCloseFile = (file: string) => {
         setOpenFiles(openFiles.filter(f => f !== file));
@@ -273,12 +408,12 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
                 {activeFile ? (
                     <MonacoEditor
                         height="calc(100vh - 30px - 22px - 35px - 32px - 35px)"
-                        defaultLanguage="text"
+                        defaultLanguage="plaintext"
                         value={currentContent || editorContent}
                         theme="vs-dark"
                         onChange={handleEditorChange}
                         onMount={handleEditorDidMount}
-                        language={language}
+                        language={language} // Sử dụng ngôn ngữ đã xác định
                         options={{
                             minimap: { enabled: true, scale: 0.8, side: 'right' },
                             fontSize: 14,

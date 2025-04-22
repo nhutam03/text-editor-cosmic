@@ -624,12 +624,13 @@ function sendResponse(id, success, message, data = null) {
                     // Lấy danh sách menu items cho các menu cha
                     const fileMenuItems = pluginManager.getMenuItemsForParent('file');
                     const editMenuItems = pluginManager.getMenuItemsForParent('edit');
+                    const runMenuItems = pluginManager.getMenuItemsForParent('run');
 
                     console.log(`Main process: Sending updated menu items after export-to-pdf installation`);
-                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`);
 
                     // Gửi danh sách menu items mới cho renderer
-                    const allMenuItems = [...fileMenuItems, ...editMenuItems];
+                    const allMenuItems = [...fileMenuItems, ...editMenuItems, ...runMenuItems];
                     event.sender.send('menu-items-changed', allMenuItems);
                 } catch (menuError) {
                     console.error(`Main process: Error sending menu items:`, menuError);
@@ -686,12 +687,13 @@ function sendResponse(id, success, message, data = null) {
                     // Lấy danh sách menu items cho các menu cha
                     const fileMenuItems = pluginManager.getMenuItemsForParent('file');
                     const editMenuItems = pluginManager.getMenuItemsForParent('edit');
+                    const runMenuItems = pluginManager.getMenuItemsForParent('run');
 
                     console.log(`Main process: Sending updated menu items after plugin installation`);
-                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`);
 
                     // Gửi danh sách menu items mới cho renderer
-                    const allMenuItems = [...fileMenuItems, ...editMenuItems];
+                    const allMenuItems = [...fileMenuItems, ...editMenuItems, ...runMenuItems];
                     event.sender.send('menu-items-changed', allMenuItems);
                 } catch (menuError) {
                     console.error(`Main process: Error sending menu items:`, menuError);
@@ -731,12 +733,13 @@ function sendResponse(id, success, message, data = null) {
                     // Lấy danh sách menu items cho các menu cha
                     const fileMenuItems = pluginManager.getMenuItemsForParent('file');
                     const editMenuItems = pluginManager.getMenuItemsForParent('edit');
+                    const runMenuItems = pluginManager.getMenuItemsForParent('run');
 
                     console.log(`Main process: Sending updated menu items after plugin uninstallation`);
-                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}`);
+                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`);
 
                     // Gửi danh sách menu items mới cho renderer
-                    const allMenuItems = [...fileMenuItems, ...editMenuItems];
+                    const allMenuItems = [...fileMenuItems, ...editMenuItems, ...runMenuItems];
                     event.sender.send('menu-items-changed', allMenuItems);
                 } catch (menuError) {
                     console.error(`Main process: Error sending menu items:`, menuError);
@@ -995,13 +998,15 @@ function sendResponse(id, success, message, data = null) {
             const fileMenuItems = pluginManager.getMenuItemsForParent('file');
             const editMenuItems = pluginManager.getMenuItemsForParent('edit');
             const viewMenuItems = pluginManager.getMenuItemsForParent('view');
+            const runMenuItems = pluginManager.getMenuItemsForParent('run');
 
-            console.log(`Found menu items - File: ${fileMenuItems.length}, Edit: ${editMenuItems.length}, View: ${viewMenuItems.length}`);
+            console.log(`Found menu items - File: ${fileMenuItems.length}, Edit: ${editMenuItems.length}, View: ${viewMenuItems.length}, Run: ${runMenuItems.length}`);
             console.log(`File menu items: ${JSON.stringify(fileMenuItems.map(item => ({ id: item.id, label: item.label, pluginId: item.pluginId })))}`);
             console.log(`Edit menu items: ${JSON.stringify(editMenuItems.map(item => ({ id: item.id, label: item.label, pluginId: item.pluginId })))}`);
+            console.log(`Run menu items: ${JSON.stringify(runMenuItems.map(item => ({ id: item.id, label: item.label, pluginId: item.pluginId })))}`);
 
             // Kết hợp tất cả menu items
-            const allMenuItems = [...fileMenuItems, ...editMenuItems, ...viewMenuItems];
+            const allMenuItems = [...fileMenuItems, ...editMenuItems, ...viewMenuItems, ...runMenuItems];
             const menuItem = allMenuItems.find(item => item.id === menuItemId);
             console.log(`Found menu item: ${menuItem ? JSON.stringify(menuItem) : 'null'}`);
 
@@ -1153,6 +1158,114 @@ function sendResponse(id, success, message, data = null) {
                     command = 'npx';
                     args = ['ts-node', tempFile];
                     break;
+                case 'cpp':
+                    tempFile = path.join(tempDir, 'temp.cpp');
+                    // Biên dịch và chạy file C++
+                    // Đầu tiên, biên dịch file C++ thành file thực thi
+                    const executableFile = path.join(tempDir, 'temp.exe');
+                    fs.writeFileSync(tempFile, data.code);
+
+                    // Kiểm tra xem có trình biên dịch tích hợp không
+                    // Danh sách các đường dẫn có thể có trình biên dịch
+                    const possibleCompilerPaths = [
+                        // Thư mục plugins trong project
+                        path.join(__dirname, '..', 'plugins', 'code-runner', 'bin', 'win32', 'bin', 'g++.exe'),
+
+                        // Thư mục plugins trong AppData
+                        path.join(app.getPath('userData'), 'plugins', 'code-runner', 'bin', 'win32', 'bin', 'g++.exe'),
+                        path.join(app.getPath('userData'), 'plugins', 'code-runner-1.1.0', 'bin', 'win32', 'bin', 'g++.exe'),
+
+                        // Đường dẫn mặc định của MinGW
+                        'C:\\MinGW\\bin\\g++.exe',
+                        'C:\\msys64\\mingw64\\bin\\g++.exe'
+                    ];
+
+                    // Tìm trình biên dịch trong các đường dẫn có thể
+                    let integratedCompilerPath = '';
+                    for (const compilerPath of possibleCompilerPaths) {
+                        console.log(`Checking for compiler at: ${compilerPath}`);
+                        if (fs.existsSync(compilerPath)) {
+                            console.log(`Found compiler at: ${compilerPath}`);
+                            integratedCompilerPath = compilerPath;
+                            break;
+                        }
+                    }
+
+                    // Sử dụng trình biên dịch tích hợp nếu có, nếu không thì sử dụng g++ hệ thống
+                    let gppPath = 'g++';
+
+                    if (integratedCompilerPath) {
+                        gppPath = integratedCompilerPath;
+                        console.log(`Using integrated compiler: ${gppPath}`);
+                    } else {
+                        console.log('No integrated compiler found, using system g++');
+                    }
+                    console.log(`Using C++ compiler: ${gppPath}`);
+
+                    // Sử dụng g++ để biên dịch
+                    const compileProcess = spawn(gppPath, [tempFile, '-o', executableFile]);
+                    let compileError = '';
+
+                    compileProcess.stderr.on('data', (data) => {
+                        compileError += data.toString();
+                    });
+
+                    compileProcess.on('close', (code) => {
+                        if (code !== 0) {
+                            // Biên dịch thất bại
+                            event.reply("run-code-result", {
+                                success: false,
+                                message: `Compilation failed with exit code ${code}`,
+                                output: '',
+                                error: compileError,
+                                exitCode: code
+                            });
+                            return;
+                        }
+
+                        // Biên dịch thành công, chạy file thực thi
+                        const runProcess = spawn(executableFile, []);
+                        let output = '';
+                        let errorOutput = '';
+
+                        // Lưu trữ process để có thể dừng nó sau này
+                        runningProcesses.set(data.fileName, runProcess);
+
+                        runProcess.stdout.on('data', (data) => {
+                            const text = data.toString();
+                            output += text;
+                            // Gửi kết quả trực tiếp đến renderer
+                            event.reply("run-code-output", {
+                                type: 'stdout',
+                                text: text
+                            });
+                        });
+
+                        runProcess.stderr.on('data', (data) => {
+                            const text = data.toString();
+                            errorOutput += text;
+                            // Gửi lỗi trực tiếp đến renderer
+                            event.reply("run-code-output", {
+                                type: 'stderr',
+                                text: text
+                            });
+                        });
+
+                        runProcess.on('close', (code) => {
+                            console.log(`C++ process exited with code ${code}`);
+                            runningProcesses.delete(data.fileName);
+
+                            // Gửi kết quả cuối cùng
+                            event.reply("run-code-result", {
+                                success: code === 0,
+                                message: code === 0 ? 'Code executed successfully' : `Code execution failed with exit code ${code}`,
+                                output: output,
+                                error: errorOutput,
+                                exitCode: code
+                            });
+                        });
+                    });
+                    return;
                 case 'html':
                     tempFile = path.join(tempDir, 'temp.html');
                     // Mở file HTML trong trình duyệt mặc định

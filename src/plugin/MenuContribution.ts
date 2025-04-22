@@ -9,6 +9,7 @@ export interface MenuItem {
   position?: number;   // Optional position within the parent menu (lower numbers appear first)
   icon?: string;       // Optional icon name
   shortcut?: string;   // Optional keyboard shortcut
+  accelerator?: string; // Optional keyboard accelerator (e.g., 'F5', 'Ctrl+S')
   pluginId: string;    // ID of the plugin that contributed this menu item
 }
 
@@ -38,7 +39,7 @@ export class MenuRegistry {
   public registerMenuItem(item: MenuItem): void {
     // Check if item with same ID already exists
     const existingIndex = this.menuItems.findIndex(i => i.id === item.id);
-    
+
     if (existingIndex >= 0) {
       // Replace existing item
       this.menuItems[existingIndex] = item;
@@ -46,7 +47,7 @@ export class MenuRegistry {
       // Add new item
       this.menuItems.push(item);
     }
-    
+
     // Notify listeners
     this.notifyListeners();
   }
@@ -57,7 +58,7 @@ export class MenuRegistry {
   public unregisterMenuItemsByPlugin(pluginId: string): void {
     const initialLength = this.menuItems.length;
     this.menuItems = this.menuItems.filter(item => item.pluginId !== pluginId);
-    
+
     // Only notify if items were actually removed
     if (initialLength !== this.menuItems.length) {
       this.notifyListeners();

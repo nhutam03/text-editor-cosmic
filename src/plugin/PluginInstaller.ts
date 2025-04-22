@@ -193,9 +193,8 @@ export class PluginInstaller {
       // 6. Xác định tên thư mục cài đặt
       let pluginDirName = pluginName;
       if (zipPackageJson && zipPackageJson.name) {
-        // Sử dụng tên từ package.json nếu có
-        pluginDirName = zipPackageJson.version ?
-          `${zipPackageJson.name}-${zipPackageJson.version}` : zipPackageJson.name;
+        // Luôn sử dụng tên plugin mà không thêm phiên bản
+        pluginDirName = zipPackageJson.name;
       }
 
       // 7. Tạo thư mục plugin
@@ -288,6 +287,7 @@ export class PluginInstaller {
             version: string;
             description: string;
             main: string;
+            scripts?: { [key: string]: string };
             dependencies: { [key: string]: string };
           } = {
             name: extractedPackageJson.name,
@@ -297,11 +297,31 @@ export class PluginInstaller {
             dependencies: {}
           };
 
+          // Giữ lại scripts nếu có
+          if (extractedPackageJson.scripts) {
+            minimalPackageJson.scripts = extractedPackageJson.scripts;
+          }
+
           // Chỉ bao gồm các dependencies cần thiết
-          const essentialDeps = ['pdfmake', 'pdfkit'];
+          const essentialDeps = ['pdfmake', 'pdfkit', 'tar', '7zip-bin'];
           for (const dep of essentialDeps) {
             if (extractedPackageJson.dependencies && extractedPackageJson.dependencies[dep]) {
               minimalPackageJson.dependencies[dep] = extractedPackageJson.dependencies[dep];
+            }
+          }
+
+          // Nếu là code-runner plugin, đảm bảo có tar và 7zip-bin
+          if (extractedPackageJson.name === 'code-runner') {
+            if (extractedPackageJson.dependencies && extractedPackageJson.dependencies['tar']) {
+              minimalPackageJson.dependencies['tar'] = extractedPackageJson.dependencies['tar'];
+            } else {
+              minimalPackageJson.dependencies['tar'] = '^6.1.15';
+            }
+
+            if (extractedPackageJson.dependencies && extractedPackageJson.dependencies['7zip-bin']) {
+              minimalPackageJson.dependencies['7zip-bin'] = extractedPackageJson.dependencies['7zip-bin'];
+            } else {
+              minimalPackageJson.dependencies['7zip-bin'] = '^5.1.1';
             }
           }
 
@@ -855,51 +875,98 @@ function sendResponse(id, success, message, data = null) {
 
       // Process each plugin directory
       for (const pluginDir of pluginDirs) {
-        const packageJsonPath = path.join(this.pluginsDir, pluginDir, 'package.json');
+        const pluginDirPath = path.join(this.pluginsDir, pluginDir);
+        const packageJsonPath = path.join(pluginDirPath, 'package.json');
         console.log(`Checking for package.json at: ${packageJsonPath}`);
 
         if (fs.existsSync(packageJsonPath)) {
+          // Process package.json in the root directory
+          this.processPackageJson(packageJsonPath, pluginDir);
+        } else {
+          console.log(`No package.json found in root directory, searching subdirectories...`);
+
+          // Check for subdirectories that might contain the plugin
           try {
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-            console.log(`Found package.json for plugin ${pluginDir}: ${JSON.stringify(packageJson, null, 2)}`);
+            const subdirs = fs.readdirSync(pluginDirPath).filter(file => {
+              const filePath = path.join(pluginDirPath, file);
+              return fs.statSync(filePath).isDirectory();
+            });
 
             // Normalize plugin name (remove version suffix if present)
-            let pluginName = packageJson.name || pluginDir;
-            const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+            const normalizedDirName = pluginDir.replace(/(-\d+\.\d+\.\d+)$/, '');
 
-            // If the directory name has version but the package.json name doesn't, use the normalized name
-            if (pluginDir.includes(normalizedName) && pluginDir !== normalizedName && !pluginName.includes('-')) {
-              pluginName = normalizedName;
+            // First, look for a subdirectory with the same name as the plugin
+            const pluginNameSubdir = subdirs.find(dir => dir === normalizedDirName || dir === pluginDir);
+            const subdirsToCheck = pluginNameSubdir ?
+              [pluginNameSubdir, ...subdirs.filter(dir => dir !== pluginNameSubdir)] : subdirs;
+
+            let foundInSubdir = false;
+
+            for (const subdir of subdirsToCheck) {
+              const subdirPath = path.join(pluginDirPath, subdir);
+              const subPackageJsonPath = path.join(subdirPath, 'package.json');
+
+              if (fs.existsSync(subPackageJsonPath)) {
+                console.log(`Found package.json in subdirectory: ${subdir}`);
+                foundInSubdir = true;
+
+                // Process package.json in the subdirectory
+                this.processPackageJson(subPackageJsonPath, pluginDir, subdir);
+                break; // Process only the first valid package.json found
+              }
             }
 
-            console.log(`Using plugin name: ${pluginName} (normalized from ${packageJson.name || pluginDir})`);
-
-            const pluginInfo: PluginInfo = {
-              name: pluginName,
-              version: packageJson.version || '1.0.0',
-              description: packageJson.description || 'No description provided',
-              author: packageJson.author || 'Unknown',
-              installed: true
-            };
-
-            this.installedPlugins.set(pluginInfo.name, pluginInfo);
-
-            // Also register with the directory name if it's different
-            if (pluginDir !== pluginInfo.name) {
-              console.log(`Also registering plugin with directory name: ${pluginDir}`);
-              this.installedPlugins.set(pluginDir, pluginInfo);
+            if (!foundInSubdir) {
+              console.log(`No package.json found in any subdirectory of ${pluginDir}`);
             }
           } catch (error) {
-            console.error(`Error reading package.json for plugin ${pluginDir}:`, error);
+            console.error(`Error searching subdirectories of ${pluginDir}:`, error);
           }
-        } else {
-          console.log(`No package.json found for plugin directory: ${pluginDir}`);
         }
       }
 
       console.log(`Refreshed installed plugins: ${Array.from(this.installedPlugins.keys()).join(', ')}`);
     } catch (error) {
       console.error('Error refreshing installed plugins:', error);
+    }
+  }
+
+  /**
+   * Process a package.json file and register the plugin
+   */
+  private processPackageJson(packageJsonPath: string, pluginDir: string, subdir?: string): void {
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+      console.log(`Found package.json for plugin ${subdir ? `${pluginDir}/${subdir}` : pluginDir}: ${JSON.stringify(packageJson, null, 2)}`);
+
+      // Normalize plugin name (remove version suffix if present)
+      let pluginName = packageJson.name || pluginDir;
+      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+      // If the directory name has version but the package.json name doesn't, use the normalized name
+      if (pluginDir.includes(normalizedName) && pluginDir !== normalizedName && !pluginName.includes('-')) {
+        pluginName = normalizedName;
+      }
+
+      console.log(`Using plugin name: ${pluginName} (normalized from ${packageJson.name || pluginDir})`);
+
+      const pluginInfo: PluginInfo = {
+        name: pluginName,
+        version: packageJson.version || '1.0.0',
+        description: packageJson.description || 'No description provided',
+        author: packageJson.author || 'Unknown',
+        installed: true
+      };
+
+      this.installedPlugins.set(pluginInfo.name, pluginInfo);
+
+      // Also register with the directory name if it's different
+      if (pluginDir !== pluginInfo.name) {
+        console.log(`Also registering plugin with directory name: ${pluginDir}`);
+        this.installedPlugins.set(pluginDir, pluginInfo);
+      }
+    } catch (error) {
+      console.error(`Error processing package.json at ${packageJsonPath}:`, error);
     }
   }
 
@@ -929,6 +996,7 @@ function sendResponse(id, success, message, data = null) {
           continue; // Try next directory
         }
 
+        // First check for package.json in the root directory
         const packageJsonPath = path.join(pluginDir, 'package.json');
         console.log(`Looking for package.json at: ${packageJsonPath}`);
 
@@ -1000,7 +1068,90 @@ function sendResponse(id, success, message, data = null) {
             return jsFiles[0];
           }
         } else {
-          console.log(`Package.json not found for plugin in directory: ${pluginDir}`);
+          console.log(`Package.json not found in root directory, searching subdirectories...`);
+
+          // Check for subdirectories that might contain the plugin
+          const subdirs = fs.readdirSync(pluginDir).filter(file => {
+            const filePath = path.join(pluginDir, file);
+            return fs.statSync(filePath).isDirectory();
+          });
+
+          // First, look for a subdirectory with the same name as the plugin
+          const pluginNameSubdir = subdirs.find(dir => dir === normalizedName || dir === pluginName);
+          const subdirsToCheck = pluginNameSubdir ? [pluginNameSubdir, ...subdirs.filter(dir => dir !== pluginNameSubdir)] : subdirs;
+
+          for (const subdir of subdirsToCheck) {
+            const subdirPath = path.join(pluginDir, subdir);
+            console.log(`Checking subdirectory: ${subdirPath}`);
+
+            const subPackageJsonPath = path.join(subdirPath, 'package.json');
+            if (fs.existsSync(subPackageJsonPath)) {
+              console.log(`Found package.json in subdirectory: ${subdir}`);
+
+              try {
+                const packageJson = JSON.parse(fs.readFileSync(subPackageJsonPath, 'utf-8'));
+                console.log(`Subdirectory package.json content: ${JSON.stringify(packageJson, null, 2)}`);
+
+                // Get main script path from package.json
+                const mainScript = packageJson.main || 'index.js';
+                console.log(`Main script from subdirectory package.json: ${mainScript}`);
+
+                // Check if the main script exists in the subdirectory
+                const mainPath = path.join(subdirPath, mainScript);
+                if (fs.existsSync(mainPath)) {
+                  console.log(`Found main script in subdirectory at: ${mainPath}`);
+                  return mainPath;
+                }
+
+                // Try index.js in the subdirectory
+                const indexPath = path.join(subdirPath, 'index.js');
+                if (fs.existsSync(indexPath)) {
+                  console.log(`Found index.js in subdirectory at: ${indexPath}`);
+                  return indexPath;
+                }
+
+                // Search for any .js file in the subdirectory
+                const findJsFiles = (dir: string): string[] => {
+                  const results: string[] = [];
+                  const files = fs.readdirSync(dir);
+
+                  for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const stat = fs.statSync(filePath);
+
+                    if (stat.isDirectory()) {
+                      results.push(...findJsFiles(filePath));
+                    } else if (file.endsWith('.js')) {
+                      results.push(filePath);
+                    }
+                  }
+
+                  return results;
+                };
+
+                const jsFiles = findJsFiles(subdirPath);
+                if (jsFiles.length > 0) {
+                  // Prioritize files with names like 'index.js', 'main.js', or matching the plugin name
+                  const priorityFiles = jsFiles.filter(file => {
+                    const fileName = path.basename(file);
+                    return fileName === 'index.js' ||
+                           fileName === 'main.js' ||
+                           fileName === `${normalizedName}.js`;
+                  });
+
+                  if (priorityFiles.length > 0) {
+                    console.log(`Using priority file from subdirectory as main script: ${priorityFiles[0]}`);
+                    return priorityFiles[0];
+                  }
+
+                  console.log(`Using first found .js file from subdirectory as main script: ${jsFiles[0]}`);
+                  return jsFiles[0];
+                }
+              } catch (error) {
+                console.error(`Error processing package.json in subdirectory ${subdir}:`, error);
+              }
+            }
+          }
         }
       }
 
