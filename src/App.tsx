@@ -302,11 +302,15 @@ const App: React.FC = () => {
   };
 
   const handleCloseFile = (fileName: string) => {
+    console.log('handleCloseFile called for:', fileName);
+
     // Find the index of the file being closed
     const fileIndex = openFiles.indexOf(fileName);
+    console.log('File index in openFiles array:', fileIndex);
 
     // Create a new array without the file to close
     const newOpenFiles = openFiles.filter(file => file !== fileName);
+    console.log('New openFiles array after removal:', newOpenFiles);
 
     // Update the openFiles state
     setOpenFiles(newOpenFiles);
@@ -319,6 +323,7 @@ const App: React.FC = () => {
     }
     // If the closed file was the active file, set a new active file
     else if (activeFile === fileName) {
+      console.log('Closed file was the active file, selecting new active file');
       // Determine which file to activate next
       let nextActiveFileIndex;
 
@@ -336,11 +341,23 @@ const App: React.FC = () => {
       }
 
       const nextActiveFile = newOpenFiles[nextActiveFileIndex];
+      console.log('Setting new active file to:', nextActiveFile);
       setActiveFile(nextActiveFile);
 
       // Load the content of the new active file
       loadFileContent(nextActiveFile);
+    } else {
+      console.log('Closed file was not the active file, active file remains:', activeFile);
     }
+
+    // Remove the file from originalContent and modifiedFiles
+    setOriginalContent(prev => {
+      const newContent = {...prev};
+      delete newContent[fileName];
+      return newContent;
+    });
+
+    setModifiedFiles(prev => prev.filter(file => file !== fileName));
   };
 
   const updateEditorStats = (stats: any) => {

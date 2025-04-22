@@ -489,35 +489,69 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, onF
             : `Bạn có chắc muốn xóa file ${node.name}?`;
 
         if (window.confirm(confirmMessage)) {
-            // Cập nhật UI trực tiếp bằng cách tạo một bản sao của folderStructure
-            // và xóa file/thư mục trong đó
-            const removeNode = (parentNode: FolderStructureItem): FolderStructureItem => {
-                if (!parentNode.children) return parentNode;
-
-                return {
-                    ...parentNode,
-                    children: parentNode.children
-                        .filter(child => child.path !== node.path)
-                        .map(removeNode)
-                };
-            };
-
-            if (folderStructure) {
-                console.log('Removing node from UI:', node.path);
-                const updatedStructure = removeNode(folderStructure);
-                setFolderStructure(updatedStructure);
+            try {
+                // Lưu lại đường dẫn của node để sử dụng sau này
+                const nodePath = node.path;
+                const nodeType = node.type;
 
                 // Nếu file đang được mở, thông báo cho component cha
-                if (node.type === 'file' && node.path) {
-                    onFileDeleted?.(node.path);
-                }
-            }
+                if (nodeType === 'file') {
+                    console.log('Notifying parent component about file deletion:', nodePath);
+                    onFileDeleted?.(nodePath);
+                } else if (nodeType === 'directory') {
+                    // Nếu là thư mục, cần thông báo cho component cha về tất cả các file trong thư mục
+                    console.log('Directory deletion, checking for open files in directory:', nodePath);
 
-            // Gửi yêu cầu xóa đến main process
-            window.electron.ipcRenderer.send('delete-item-request', node.path, isDirectory);
-            window.electron.ipcRenderer.once('item-deleted', (event, result) => {
-                console.log('Item deleted result:', result);
-            });
+                    // Tìm tất cả các file trong thư mục và thông báo cho component cha
+                    const findFilesInDirectory = (dirNode: FolderStructureItem) => {
+                        if (!dirNode.children) return;
+
+                        dirNode.children.forEach(child => {
+                            if (child.type === 'file' && child.path) {
+                                console.log('Notifying parent about file in deleted directory:', child.path);
+                                onFileDeleted?.(child.path);
+                            } else if (child.type === 'directory') {
+                                findFilesInDirectory(child);
+                            }
+                        });
+                    };
+
+                    // Tìm node thư mục trong cấu trúc thư mục
+                    const findDirectoryNode = (rootNode: FolderStructureItem, targetPath: string): FolderStructureItem | null => {
+                        if (rootNode.path === targetPath) return rootNode;
+                        if (!rootNode.children) return null;
+
+                        for (const child of rootNode.children) {
+                            if (child.path === targetPath) return child;
+                            if (child.type === 'directory') {
+                                const found = findDirectoryNode(child, targetPath);
+                                if (found) return found;
+                            }
+                        }
+
+                        return null;
+                    };
+
+                    if (folderStructure) {
+                        const dirNode = findDirectoryNode(folderStructure, nodePath);
+                        if (dirNode) {
+                            findFilesInDirectory(dirNode);
+                        }
+                    }
+                }
+
+                // Gửi yêu cầu xóa đến main process
+                console.log('Sending delete request to main process:', { path: nodePath, isDirectory });
+                window.electron.ipcRenderer.send('delete-item-request', nodePath, isDirectory);
+
+                // Hiển thị thông báo đang xóa
+                console.log('Delete request sent, UI will be updated when response is received');
+
+                // Không cập nhật UI trực tiếp ở đây
+                // UI sẽ được cập nhật trong useEffect khi nhận được sự kiện 'item-deleted'
+            } catch (error) {
+                console.error('Error in handleDelete:', error);
+            }
         }
     };
 
@@ -912,11 +946,61 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, onF
             // Không làm mới cấu trúc thư mục vì đã cập nhật UI trực tiếp trong handleRenameComplete
         });
 
+        // Lắng nghe sự kiện item-deleted để cập nhật UI
+        window.electron.ipcRenderer.on('item-deleted', (event, result) => {
+            console.log('Item deleted event received in useEffect:', result);
+
+            if (result.success && folderStructure) {
+                try {
+                    // Cập nhật UI sau khi xóa thành công
+                    const removeNode = (parentNode: FolderStructureItem): FolderStructureItem => {
+                        if (!parentNode.children) return parentNode;
+
+                        return {
+                            ...parentNode,
+                            children: parentNode.children
+                                .filter(child => {
+                                    // Kiểm tra xem path của child có phải là result.path hoặc nằm trong result.path không
+                                    // (nếu result.path là thư mục)
+                                    if (child.path === result.path) return false;
+                                    if (result.isDirectory && child.path && child.path.startsWith(result.path + '/')) return false;
+                                    if (result.isDirectory && child.path && child.path.startsWith(result.path + '\\')) return false;
+                                    return true;
+                                })
+                                .map(removeNode)
+                        };
+                    };
+
+                    console.log('Updating UI after successful deletion in useEffect');
+                    const updatedStructure = removeNode(folderStructure);
+                    setFolderStructure(updatedStructure);
+
+                    // Nếu là file, thông báo cho component cha
+                    if (!result.isDirectory) {
+                        console.log('Notifying parent component about file deletion in useEffect:', result.path);
+                        onFileDeleted?.(result.path);
+                    } else {
+                        // Nếu là thư mục, làm mới cấu trúc thư mục
+                        console.log('Directory deleted, refreshing folder structure');
+                        if (selectedFolder) {
+                            // Làm mới cấu trúc thư mục sau khi xóa thư mục
+                            setTimeout(() => {
+                                refreshFolderStructure();
+                            }, 500);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error updating UI after deletion:', error);
+                }
+            }
+        });
+
         return () => {
             window.electron.ipcRenderer.removeAllListeners('folder-structure');
             window.electron.ipcRenderer.removeAllListeners('item-renamed');
+            window.electron.ipcRenderer.removeAllListeners('item-deleted');
         };
-    }, []);
+    }, [folderStructure, onFileDeleted]);
     // Lấy danh sách plugin khi tab extensions được mở
     // useEffect(() => {
     //     if (activeTab === "extensions") {

@@ -279,23 +279,29 @@ app.whenReady().then(async () => {
 
     // Handle deleting a file or folder
     ipcMain.on('delete-item-request', async (event, itemPath: string, isDirectory: boolean) => {
+        console.log('Delete item request received:', { itemPath, isDirectory });
         try {
             if (!fs.existsSync(itemPath)) {
+                console.error('Item does not exist:', itemPath);
                 throw new Error('Item does not exist');
             }
 
             if (isDirectory) {
                 // Xóa thư mục và tất cả nội dung bên trong
+                console.log('Deleting directory:', itemPath);
                 fs.rmSync(itemPath, { recursive: true, force: true });
             } else {
                 // Xóa file
+                console.log('Deleting file:', itemPath);
                 fs.unlinkSync(itemPath);
             }
 
-            event.sender.send('item-deleted', { success: true, error: undefined });
+            console.log('Item deleted successfully');
+            event.sender.send('item-deleted', { success: true, error: undefined, path: itemPath, isDirectory });
         } catch (error: any) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to delete item';
-            event.sender.send('item-deleted', { success: false, error: errorMessage });
+            console.error('Error deleting item:', errorMessage);
+            event.sender.send('item-deleted', { success: false, error: errorMessage, path: itemPath });
         }
     });
 
