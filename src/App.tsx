@@ -2,8 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import Editor from './components/Editor';
 import Sidebar from './components/Sidebar';
 import ContentArea from './components/ContentArea';
+import Terminal from './components/Terminal';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
-import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText, Play, Square } from 'lucide-react';
 import { MenuItem } from './plugin/MenuContribution';
 
 const App: React.FC = () => {
@@ -17,9 +18,12 @@ const App: React.FC = () => {
   const [selectedFolder, setSelectedFolder] = useState<string>('');
   const [showTerminal, setShowTerminal] = useState(false);
   const [activeTerminalTab, setActiveTerminalTab] = useState('TERMINAL');
+  const [terminalOutput, setTerminalOutput] = useState<string>('');
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showEditMenu, setShowEditMenu] = useState(false);
   const [showViewMenu, setShowViewMenu] = useState(false);
+  const [showRunMenu, setShowRunMenu] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
   // Vẫn giữ lại state này để sử dụng cho các plugin khác
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
@@ -31,9 +35,11 @@ const App: React.FC = () => {
     lineEnding: 'CRLF',
     language: 'TypeScript JSX'
   });
+  // terminalOutput đã được khai báo ở trên
   const fileMenuRef = useRef<HTMLDivElement>(null);
   const editMenuRef = useRef<HTMLDivElement>(null);
   const viewMenuRef = useRef<HTMLDivElement>(null);
+  const runMenuRef = useRef<HTMLDivElement>(null);
   const defaultContentSize = 20;
 
   const toggleRightSidebar = () => {
@@ -104,12 +110,21 @@ const App: React.FC = () => {
     setShowViewMenu(prev => !prev);
     setShowFileMenu(false);
     setShowEditMenu(false);
+    setShowRunMenu(false);
+  };
+
+  const toggleRunMenu = () => {
+    setShowRunMenu(prev => !prev);
+    setShowFileMenu(false);
+    setShowEditMenu(false);
+    setShowViewMenu(false);
   };
 
   const closeAllMenus = () => {
     setShowFileMenu(false);
     setShowEditMenu(false);
     setShowViewMenu(false);
+    setShowRunMenu(false);
   };
 
   const handleNewFile = () => {
@@ -245,6 +260,47 @@ const App: React.FC = () => {
     closeAllMenus();
   };
 
+  // Hàm xử lý Run Code
+  const handleRunCode = () => {
+    if (activeFile) {
+      const extension = activeFile.split('.').pop()?.toLowerCase();
+
+      // Thêm output vào terminal
+      setTerminalOutput(`$ Running ${activeFile}...\n[${new Date().toLocaleTimeString()}] Starting execution...\n[${new Date().toLocaleTimeString()}] Processing file: ${activeFile}\n[${new Date().toLocaleTimeString()}] Execution completed successfully.`);
+
+      // Hiển thị terminal nếu chưa hiển thị
+      if (!showTerminal) {
+        setShowTerminal(true);
+      }
+
+      // Chuyển sang tab TERMINAL
+      setActiveTerminalTab('TERMINAL');
+
+      // Đánh dấu đang chạy code
+      setIsRunning(true);
+
+      // Gọi hàm chạy code tương ứng với ngôn ngữ
+      window.electron.ipcRenderer.send('run-code', {
+        code: currentContent,
+        fileName: activeFile,
+        language: extension
+      });
+    } else {
+      alert('No file is currently open. Please open a file before running code.');
+    }
+    closeAllMenus();
+  };
+
+  // Hàm xử lý Stop Execution
+  const handleStopExecution = () => {
+    if (isRunning) {
+      console.log('Stopping code execution');
+      window.electron.ipcRenderer.send('stop-execution');
+      setIsRunning(false);
+    }
+    closeAllMenus();
+  };
+
   const handleCloseFile = (fileName: string) => {
     // Find the index of the file being closed
     const fileIndex = openFiles.indexOf(fileName);
@@ -318,6 +374,16 @@ const App: React.FC = () => {
         e.preventDefault();
         handleExportToPdf();
       }
+      // F5 để chạy code
+      if (e.key === 'F5') {
+        e.preventDefault();
+        handleRunCode();
+      }
+      // Shift+F5 để dừng chạy code
+      if (e.shiftKey && e.key === 'F5') {
+        e.preventDefault();
+        handleStopExecution();
+      }
       // Shift+Alt+F để định dạng mã với Prettier
       if (e.shiftKey && e.altKey && e.key === 'F') {
         e.preventDefault();
@@ -362,7 +428,8 @@ const App: React.FC = () => {
       if (
         fileMenuRef.current && !fileMenuRef.current.contains(e.target as Node) &&
         editMenuRef.current && !editMenuRef.current.contains(e.target as Node) &&
-        viewMenuRef.current && !viewMenuRef.current.contains(e.target as Node)
+        viewMenuRef.current && !viewMenuRef.current.contains(e.target as Node) &&
+        runMenuRef.current && !runMenuRef.current.contains(e.target as Node)
       ) {
         console.log('Click outside menu detected, closing all menus');
         closeAllMenus();
@@ -375,7 +442,7 @@ const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [handleSaveFile, handleOpenFile, handleNewFile, toggleTerminal, closeAllMenus, pluginMenuItems, activeFile, currentContent]);
+  }, [handleSaveFile, handleOpenFile, handleNewFile, toggleTerminal, closeAllMenus, pluginMenuItems, activeFile, currentContent, handleRunCode, handleStopExecution, handleExportToPdf]);
 
   // Lấy danh sách plugins đã cài đặt
   useEffect(() => {
@@ -398,6 +465,42 @@ const App: React.FC = () => {
 
     return () => {
       window.electron.ipcRenderer.removeAllListeners("plugin-list");
+    };
+  }, []);
+
+  // Lắng nghe kết quả chạy code
+  useEffect(() => {
+    const handleRunCodeOutput = (_event: any, data: { type: string, text: string }) => {
+      console.log(`Run code output (${data.type}):`, data.text);
+      setTerminalOutput(prev => prev + data.text);
+    };
+
+    const handleRunCodeResult = (_event: any, result: any) => {
+      console.log('Run code result:', result);
+      setIsRunning(false);
+
+      // Thêm thông báo kết thúc
+      setTerminalOutput(prev => prev + `\n\n--- ${result.success ? 'SUCCESS' : 'ERROR'} ---\n${result.message}\n`);
+    };
+
+    const handleStopExecutionResult = (_event: any, result: any) => {
+      console.log('Stop execution result:', result);
+      setIsRunning(false);
+
+      // Thêm thông báo dừng chạy
+      setTerminalOutput(prev => prev + `\n\n--- STOPPED ---\n${result.message}\n`);
+    };
+
+    // Đăng ký các listener
+    window.electron.ipcRenderer.on('run-code-output', handleRunCodeOutput);
+    window.electron.ipcRenderer.on('run-code-result', handleRunCodeResult);
+    window.electron.ipcRenderer.on('stop-execution-result', handleStopExecutionResult);
+
+    return () => {
+      // Hủy đăng ký các listener
+      window.electron.ipcRenderer.removeAllListeners('run-code-output');
+      window.electron.ipcRenderer.removeAllListeners('run-code-result');
+      window.electron.ipcRenderer.removeAllListeners('stop-execution-result');
     };
   }, []);
 
@@ -819,7 +922,45 @@ const App: React.FC = () => {
           </div>
           <span className="hover:bg-[#505050] px-2 py-1 cursor-pointer">Selection</span>
           <span className="hover:bg-[#505050] px-2 py-1 cursor-pointer">Go</span>
-          <span className="hover:bg-[#505050] px-2 py-1 cursor-pointer">Run</span>
+          <div className="relative">
+            <span
+              className="hover:bg-[#505050] px-2 py-1 cursor-pointer menu-header"
+              onClick={toggleRunMenu}
+              ref={runMenuRef}
+            >
+              Run
+            </span>
+            {showRunMenu && (
+              <div className="absolute top-full left-0 bg-[#252526] shadow-lg z-50 w-48">
+                <div className="p-1">
+                  <div
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      console.log('Run Code menu item clicked');
+                      handleRunCode();
+                    }}
+                  >
+                    <Play size={16} className="mr-2" />
+                    <span>Run Code</span>
+                    <span className="ml-auto text-xs text-gray-400">F5</span>
+                  </div>
+                  <div
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      console.log('Stop Execution menu item clicked');
+                      handleStopExecution();
+                    }}
+                  >
+                    <Square size={16} className="mr-2" />
+                    <span>Stop Execution</span>
+                    <span className="ml-auto text-xs text-gray-400">Shift+F5</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <span className="hover:bg-[#505050] px-2 py-1 cursor-pointer">...</span>
         </div>
         <div className="flex items-center ml-4">
@@ -945,112 +1086,13 @@ const App: React.FC = () => {
 
       {/* Terminal Area - Chỉ hiển thị khi showTerminal = true */}
       {showTerminal && (
-        <div className="bg-[#1e1e1e] border-t border-[#3c3c3c]" style={{ height: '35%' }}>
-          <div className="flex bg-[#252526] text-sm">
-            <div
-              className={`px-3 py-1 border-r border-[#3c3c3c] cursor-pointer ${activeTerminalTab === 'PROBLEMS' ? 'bg-[#1e1e1e]' : ''}`}
-              onClick={() => handleTerminalTabClick('PROBLEMS')}
-            >
-              PROBLEMS
-            </div>
-            <div
-              className={`px-3 py-1 border-r border-[#3c3c3c] cursor-pointer ${activeTerminalTab === 'OUTPUT' ? 'bg-[#1e1e1e]' : ''}`}
-              onClick={() => handleTerminalTabClick('OUTPUT')}
-            >
-              OUTPUT
-            </div>
-            <div
-              className={`px-3 py-1 border-r border-[#3c3c3c] cursor-pointer ${activeTerminalTab === 'DEBUG CONSOLE' ? 'bg-[#1e1e1e]' : ''}`}
-              onClick={() => handleTerminalTabClick('DEBUG CONSOLE')}
-            >
-              DEBUG CONSOLE
-            </div>
-            <div
-              className={`px-3 py-1 border-r border-[#3c3c3c] cursor-pointer ${activeTerminalTab === 'TERMINAL' ? 'bg-[#1e1e1e]' : ''}`}
-              onClick={() => handleTerminalTabClick('TERMINAL')}
-            >
-              TERMINAL
-            </div>
-            <div
-              className={`px-3 py-1 border-r border-[#3c3c3c] cursor-pointer ${activeTerminalTab === 'PORTS' ? 'bg-[#1e1e1e]' : ''}`}
-              onClick={() => handleTerminalTabClick('PORTS')}
-            >
-              PORTS
-            </div>
-            <div
-              className={`px-3 py-1 cursor-pointer ${activeTerminalTab === 'AUGMENT NEXT EDIT' ? 'bg-[#1e1e1e]' : ''}`}
-              onClick={() => handleTerminalTabClick('AUGMENT NEXT EDIT')}
-            >
-              AUGMENT NEXT EDIT
-            </div>
-            <div className="ml-auto px-3 py-1 cursor-pointer" onClick={toggleTerminal}>
-              <X size={14} />
-            </div>
-          </div>
-          {activeTerminalTab === 'TERMINAL' && (
-            <div className="p-2 text-sm font-mono text-green-400 h-full overflow-auto">
-              <div>$ cross-env ELECTRON=true concurrently "npm run dev" "node electron-dev.js"</div>
-              <div className="text-white">[1] Core socket server running on port 5000</div>
-              <div className="text-white">[0] {">"}text-editor-app@0.0.0 dev</div>
-              <div className="text-white">[0] {">"}vite</div>
-              <div className="text-white">[0]</div>
-              <div className="text-white">[0] VITE v6.2.0 ready in 383 ms</div>
-              <div className="text-white">[0]</div>
-              <div className="text-white">[0] ➜ Local: <span className="text-blue-400">http://localhost:5173/</span></div>
-              <div className="text-white">[0] ➜ Network: use --host to expose</div>
-              <div className="text-white">[0]</div>
-            </div>
-          )}
-          {activeTerminalTab === 'PROBLEMS' && (
-            <div className="p-2 text-sm text-white h-full overflow-auto">
-              <div className="flex items-center justify-center h-full text-gray-400">
-                No problems have been detected in the workspace.
-              </div>
-            </div>
-          )}
-          {activeTerminalTab === 'OUTPUT' && (
-            <div className="p-2 text-sm text-white h-full overflow-auto">
-              <div className="flex items-center justify-center h-full text-gray-400">
-                No output to show.
-              </div>
-            </div>
-          )}
-          {activeTerminalTab === 'DEBUG CONSOLE' && (
-            <div className="p-2 text-sm text-white h-full overflow-auto">
-              <div className="flex items-center justify-center h-full text-gray-400">
-                Debug console is inactive.
-              </div>
-            </div>
-          )}
-          {activeTerminalTab === 'PORTS' && (
-            <div className="p-2 text-sm text-white h-full overflow-auto">
-              <div className="flex flex-col">
-                <div className="flex justify-between p-2 border-b border-[#3c3c3c]">
-                  <span>Port</span>
-                  <span>Process</span>
-                  <span>Status</span>
-                </div>
-                <div className="flex justify-between p-2">
-                  <span>5173</span>
-                  <span>Vite Dev Server</span>
-                  <span className="text-green-500">Running</span>
-                </div>
-                <div className="flex justify-between p-2">
-                  <span>5000</span>
-                  <span>Core Socket Server</span>
-                  <span className="text-green-500">Running</span>
-                </div>
-              </div>
-            </div>
-          )}
-          {activeTerminalTab === 'AUGMENT NEXT EDIT' && (
-            <div className="p-2 text-sm text-white h-full overflow-auto">
-              <div className="flex items-center justify-center h-full text-gray-400">
-                Augment Next Edit is ready.
-              </div>
-            </div>
-          )}
-        </div>
+        <Terminal
+          activeTab={activeTerminalTab}
+          isRunning={isRunning}
+          terminalOutput={terminalOutput}
+          onTabClick={handleTerminalTabClick}
+          onClose={toggleTerminal}
+        />
       )}
 
       {/* Status Bar */}

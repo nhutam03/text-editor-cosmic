@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, SaveDialogReturnValue } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, SaveDialogReturnValue, shell } from 'electron';
+import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { OpenDialogReturnValue } from 'electron';
@@ -11,6 +12,9 @@ dotenv.config();
 let selectedFolder: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 let pluginManager: PluginManager;
+
+// Map để lưu trữ các process đang chạy
+const runningProcesses = new Map<string, ChildProcess>();
 const PORT = process.env.VITE_PLUGIN_PORT ? parseInt(process.env.VITE_PLUGIN_PORT) : 5000;
 
 function createWindow() {
@@ -680,16 +684,77 @@ function sendResponse(id, success, message, data = null) {
                 try {
                     // Sử dụng PDFKit để tạo file PDF
                     const PDFDocument = require('pdfkit');
-                    const doc = new PDFDocument();
+
+                    // Tạo PDF document với các tùy chọn
+                    const doc = new PDFDocument({
+                        margin: 50,        // Margin lớn hơn để dễ đọc
+                        size: 'A4',         // Kích thước A4
+                        info: {             // Thông tin metadata
+                            Title: filePath ? path.basename(filePath) : 'Exported Document',
+                            Author: 'Text Editor App',
+                            Subject: 'Exported Document',
+                            Keywords: 'text, editor, export, pdf',
+                            Creator: 'Text Editor App',
+                            Producer: 'PDFKit'
+                        }
+                    });
+
                     const stream = fs.createWriteStream(result.filePath);
 
                     // Pipe PDF to file
                     doc.pipe(stream);
 
-                    // Add content to PDF
-                    doc.fontSize(12).text(content, {
-                        align: 'left'
+                    // Sử dụng font mặc định của PDFKit (Helvetica) vì nó hỗ trợ nhiều ký tự Unicode
+                    // Tuy nhiên, Helvetica không hỗ trợ đầy đủ tiếng Việt
+                    // Sử dụng font Times-Roman thay thế, nó hỗ trợ tiếng Việt tốt hơn
+                    doc.font('Times-Roman');
+
+                    // Thêm tiêu đề và ngày xuất
+                    const title = filePath ? path.basename(filePath) : 'Exported Document';
+                    const date = new Date().toLocaleDateString();
+
+                    doc.fontSize(18).text(title, { align: 'center' });
+                    doc.fontSize(10).text(date, { align: 'center' });
+                    doc.moveDown(2);
+
+                    // Xử lý nội dung để giữ định dạng tốt hơn
+                    // Tách nội dung thành các dòng
+                    const lines = content.split('\n');
+
+                    // Thêm nội dung với các tùy chỉnh
+                    doc.fontSize(12);
+
+                    // Xử lý từng dòng
+                    lines.forEach((line, index) => {
+                        // Nếu là dòng trống, thêm khoảng cách
+                        if (line.trim() === '') {
+                            doc.moveDown(0.5);
+                        } else {
+                            // Nếu không phải dòng đầu tiên, thêm khoảng cách nhỏ
+                            if (index > 0) {
+                                doc.moveDown(0.2);
+                            }
+
+                            // Thêm nội dung của dòng
+                            doc.text(line, {
+                                align: 'left',
+                                continued: false,
+                                width: 500          // Chiều rộng tối đa của văn bản
+                            });
+                        }
                     });
+
+                    // Thêm số trang
+                    const totalPages = doc.bufferedPageRange().count;
+                    for (let i = 0; i < totalPages; i++) {
+                        doc.switchToPage(i);
+                        doc.fontSize(10).text(
+                            `Page ${i + 1} of ${totalPages}`,
+                            50,
+                            doc.page.height - 50,
+                            { align: 'center' }
+                        );
+                    }
 
                     // Finalize PDF
                     doc.end();
@@ -941,6 +1006,153 @@ function sendResponse(id, success, message, data = null) {
         }
     });
 });
+
+    // Chạy code
+    ipcMain.on("run-code", async (event, data: { code: string, fileName: string, language: string }) => {
+        try {
+            console.log(`Running code in ${data.language} language, code length: ${data.code?.length || 0}`);
+
+            // Tạo file tạm thời để chạy code
+            const tempDir = path.join(app.getPath('temp'), 'text-editor-code-runner');
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+
+            // Xác định tên file và lệnh chạy dựa trên ngôn ngữ
+            let tempFile = '';
+            let command = '';
+            let args: string[] = [];
+
+            switch (data.language) {
+                case 'js':
+                    tempFile = path.join(tempDir, 'temp.js');
+                    command = 'node';
+                    args = [tempFile];
+                    break;
+                case 'py':
+                    tempFile = path.join(tempDir, 'temp.py');
+                    command = 'python';
+                    args = [tempFile];
+                    break;
+                case 'ts':
+                    tempFile = path.join(tempDir, 'temp.ts');
+                    command = 'npx';
+                    args = ['ts-node', tempFile];
+                    break;
+                case 'html':
+                    tempFile = path.join(tempDir, 'temp.html');
+                    // Mở file HTML trong trình duyệt mặc định
+                    fs.writeFileSync(tempFile, data.code);
+                    shell.openExternal(`file://${tempFile}`);
+                    event.reply("run-code-result", {
+                        success: true,
+                        message: `Opened HTML file in default browser`,
+                        output: ''
+                    });
+                    return;
+                default:
+                    event.reply("run-code-result", {
+                        success: false,
+                        message: `Unsupported language: ${data.language}`,
+                        output: ''
+                    });
+                    return;
+            }
+
+            // Ghi code vào file tạm thời
+            fs.writeFileSync(tempFile, data.code);
+
+            // Chạy code
+            const childProcess = spawn(command, args);
+            let output = '';
+            let errorOutput = '';
+
+            // Lưu trữ process để có thể dừng nó sau này
+            runningProcesses.set(data.fileName, childProcess);
+
+            childProcess.stdout.on('data', (data) => {
+                const text = data.toString();
+                output += text;
+                // Gửi kết quả trực tiếp đến renderer
+                event.reply("run-code-output", {
+                    type: 'stdout',
+                    text: text
+                });
+            });
+
+            childProcess.stderr.on('data', (data) => {
+                const text = data.toString();
+                errorOutput += text;
+                // Gửi lỗi trực tiếp đến renderer
+                event.reply("run-code-output", {
+                    type: 'stderr',
+                    text: text
+                });
+            });
+
+            childProcess.on('close', (code) => {
+                console.log(`Child process exited with code ${code}`);
+                runningProcesses.delete(data.fileName);
+
+                // Gửi kết quả cuối cùng
+                event.reply("run-code-result", {
+                    success: code === 0,
+                    message: code === 0 ? 'Code executed successfully' : `Code execution failed with exit code ${code}`,
+                    output: output,
+                    error: errorOutput,
+                    exitCode: code
+                });
+            });
+        } catch (error: any) {
+            console.error(`Error running code:`, error);
+            event.reply("run-code-result", {
+                success: false,
+                message: `Error: ${error.message || String(error)}`,
+                output: '',
+                error: error.message || String(error),
+                exitCode: 1
+            });
+        }
+    });
+
+    // Dừng chạy code
+    ipcMain.on("stop-execution", (event, fileName?: string) => {
+        try {
+            if (fileName && runningProcesses.has(fileName)) {
+                // Dừng process cụ thể
+                const process = runningProcesses.get(fileName);
+                if (process) {
+                    process.kill();
+                    runningProcesses.delete(fileName);
+                    event.reply("run-code-output", {
+                        type: 'system',
+                        text: `Execution of ${fileName} stopped by user`
+                    });
+                }
+            } else {
+                // Dừng tất cả các process đang chạy
+                for (const [file, process] of runningProcesses.entries()) {
+                    process.kill();
+                    event.reply("run-code-output", {
+                        type: 'system',
+                        text: `Execution of ${file} stopped by user`
+                    });
+                }
+                runningProcesses.clear();
+            }
+
+            event.reply("stop-execution-result", {
+                success: true,
+                message: 'Execution stopped'
+            });
+        } catch (error: any) {
+            console.error(`Error stopping execution:`, error);
+            event.reply("stop-execution-result", {
+                success: false,
+                message: `Error: ${error.message || String(error)}`
+            });
+        }
+    });
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
