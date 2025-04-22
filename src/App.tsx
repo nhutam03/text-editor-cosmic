@@ -1007,6 +1007,7 @@ const App: React.FC = () => {
               <ContentArea
                 activeTab={activeTab}
                 onFileSelect={handleFileSelect}
+                onFileDeleted={handleCloseFile}
                 currentContent={currentContent}
               />
             </div>
@@ -1050,33 +1051,49 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <div className="flex-1">
-              {openFiles.length > 0 ? (
-                <Editor
-                  loadFileContent={loadFileContent}
-                  updateContent={updateCurrentContent}
-                  onStatsChange={updateEditorStats}
-                  currentContent={currentContent}
-                  activeFile={activeFile}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                  <div className="text-xl mb-4">Welcome to Text Editor</div>
-                  <div className="text-sm mb-4">Open a folder or file to get started</div>
-                  <div className="text-sm mb-6">
-                    <div className="flex items-center justify-center mb-2">
-                      <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+N</span>
-                      <span>Create a new file</span>
-                    </div>
-                    <div className="flex items-center justify-center mb-2">
-                      <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+O</span>
-                      <span>Open a file</span>
-                    </div>
-                    <div className="flex items-center justify-center">
-                      <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+S</span>
-                      <span>Save current file</span>
+            <div className="flex-1 relative">
+              {/* Editor */}
+              <div className="absolute inset-0">
+                {openFiles.length > 0 ? (
+                  <Editor
+                    loadFileContent={loadFileContent}
+                    updateContent={updateCurrentContent}
+                    onStatsChange={updateEditorStats}
+                    currentContent={currentContent}
+                    activeFile={activeFile}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                    <div className="text-xl mb-4">Welcome to Text Editor</div>
+                    <div className="text-sm mb-4">Open a folder or file to get started</div>
+                    <div className="text-sm mb-6">
+                      <div className="flex items-center justify-center mb-2">
+                        <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+N</span>
+                        <span>Create a new file</span>
+                      </div>
+                      <div className="flex items-center justify-center mb-2">
+                        <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+O</span>
+                        <span>Open a file</span>
+                      </div>
+                      <div className="flex items-center justify-center">
+                        <span className="bg-[#333] rounded px-2 py-1 mr-2 text-blue-400">Ctrl+S</span>
+                        <span>Save current file</span>
+                      </div>
                     </div>
                   </div>
+                )}
+              </div>
+
+              {/* Terminal - Nằm chồng lên editor */}
+              {showTerminal && (
+                <div className="absolute bottom-0 left-0 right-0 z-10" style={{ height: '40%', boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+                  <Terminal
+                    activeTab={activeTerminalTab}
+                    isRunning={isRunning}
+                    terminalOutput={terminalOutput}
+                    onTabClick={handleTerminalTabClick}
+                    onClose={toggleTerminal}
+                  />
                 </div>
               )}
             </div>
@@ -1084,16 +1101,7 @@ const App: React.FC = () => {
         </ResizablePanelGroup>
       </div>
 
-      {/* Terminal Area - Chỉ hiển thị khi showTerminal = true */}
-      {showTerminal && (
-        <Terminal
-          activeTab={activeTerminalTab}
-          isRunning={isRunning}
-          terminalOutput={terminalOutput}
-          onTabClick={handleTerminalTabClick}
-          onClose={toggleTerminal}
-        />
-      )}
+      {/* Terminal đã được di chuyển vào bên trong editor */}
 
       {/* Status Bar */}
       <div className="flex items-center justify-between bg-[#007acc] text-white text-xs h-[22px] px-2">

@@ -220,21 +220,129 @@ app.whenReady().then(async () => {
     });
 
     // Handle creating a new file
-    ipcMain.on('create-new-file-request', async (event, fileName: string) => {
+    ipcMain.on('create-new-file-request', async (event, filePath: string) => {
         try {
-            if (!selectedFolder) {
-                throw new Error('No folder selected');
+            // Nếu filePath là đường dẫn đầy đủ, sử dụng nó
+            // Nếu không, sử dụng selectedFolder
+            let absolutePath = filePath;
+            if (!path.isAbsolute(filePath)) {
+                if (!selectedFolder) {
+                    throw new Error('No folder selected');
+                }
+                absolutePath = path.join(selectedFolder, filePath);
             }
-            const absolutePath = path.join(selectedFolder, fileName);
+
+            // Đảm bảo thư mục cha tồn tại
+            const parentDir = path.dirname(absolutePath);
+            if (!fs.existsSync(parentDir)) {
+                fs.mkdirSync(parentDir, { recursive: true });
+            }
+
+            // Kiểm tra xem file đã tồn tại chưa
             if (!fs.existsSync(absolutePath)) {
                 fs.writeFileSync(absolutePath, '', 'utf-8'); // Tạo file mới rỗng
-                event.sender.send('new-file-created', { fileName, success: true, error: undefined });
+                event.sender.send('new-file-created', { fileName: path.basename(absolutePath), success: true, error: undefined });
             } else {
                 throw new Error('File already exists');
             }
         } catch (error: any) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to create new file';
-            event.sender.send('new-file-created', { fileName, success: false, error: errorMessage });
+            event.sender.send('new-file-created', { fileName: path.basename(filePath), success: false, error: errorMessage });
+        }
+    });
+
+    // Handle creating a new folder
+    ipcMain.on('create-new-folder-request', async (event, folderPath: string) => {
+        try {
+            // Nếu folderPath là đường dẫn đầy đủ, sử dụng nó
+            // Nếu không, sử dụng selectedFolder
+            let absolutePath = folderPath;
+            if (!path.isAbsolute(folderPath)) {
+                if (!selectedFolder) {
+                    throw new Error('No folder selected');
+                }
+                absolutePath = path.join(selectedFolder, folderPath);
+            }
+
+            // Kiểm tra xem thư mục đã tồn tại chưa
+            if (!fs.existsSync(absolutePath)) {
+                fs.mkdirSync(absolutePath, { recursive: true }); // Tạo thư mục mới
+                event.sender.send('new-folder-created', { folderName: path.basename(absolutePath), success: true, error: undefined });
+            } else {
+                throw new Error('Folder already exists');
+            }
+        } catch (error: any) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to create new folder';
+            event.sender.send('new-folder-created', { folderName: path.basename(folderPath), success: false, error: errorMessage });
+        }
+    });
+
+    // Handle deleting a file or folder
+    ipcMain.on('delete-item-request', async (event, itemPath: string, isDirectory: boolean) => {
+        try {
+            if (!fs.existsSync(itemPath)) {
+                throw new Error('Item does not exist');
+            }
+
+            if (isDirectory) {
+                // Xóa thư mục và tất cả nội dung bên trong
+                fs.rmSync(itemPath, { recursive: true, force: true });
+            } else {
+                // Xóa file
+                fs.unlinkSync(itemPath);
+            }
+
+            event.sender.send('item-deleted', { success: true, error: undefined });
+        } catch (error: any) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to delete item';
+            event.sender.send('item-deleted', { success: false, error: errorMessage });
+        }
+    });
+
+    // Handle renaming a file or folder
+    ipcMain.on('rename-item-request', async (event, itemPath: string, newName: string) => {
+        console.log('Rename item request received:', { itemPath, newName });
+        try {
+            if (!fs.existsSync(itemPath)) {
+                console.error('Item does not exist:', itemPath);
+                throw new Error('Item does not exist');
+            }
+
+            const parentDir = path.dirname(itemPath);
+            const newPath = path.join(parentDir, newName);
+            console.log('Renaming from', itemPath, 'to', newPath);
+
+            if (fs.existsSync(newPath)) {
+                console.error('An item with that name already exists:', newPath);
+                throw new Error('An item with that name already exists');
+            }
+
+            fs.renameSync(itemPath, newPath);
+            console.log('Rename successful');
+            event.sender.send('item-renamed', { success: true, error: undefined, oldPath: itemPath, newPath });
+        } catch (error: any) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to rename item';
+            console.error('Error renaming item:', errorMessage);
+            event.sender.send('item-renamed', { success: false, error: errorMessage });
+        }
+    });
+
+    // Handle refreshing folder structure
+    ipcMain.on('refresh-folder-structure', async (event, folderPath: string) => {
+        console.log('Refreshing folder structure for:', folderPath);
+        try {
+            if (!fs.existsSync(folderPath)) {
+                console.error('Folder does not exist:', folderPath);
+                throw new Error('Folder does not exist');
+            }
+
+            const folderStructure = getFolderStructure(folderPath);
+            event.sender.send('folder-structure', folderStructure);
+        } catch (error: any) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('Error refreshing folder structure:', errorMessage);
+            // Gửi thông báo lỗi về renderer
+            event.sender.send('folder-structure-error', errorMessage);
         }
     });
 
@@ -1170,6 +1278,7 @@ function getFolderStructure(folderPath: string) {
     const structure: any = {
         name,
         type: 'directory',
+        path: folderPath,
         children: []
     };
 
@@ -1183,7 +1292,8 @@ function getFolderStructure(folderPath: string) {
         } else {
             structure.children.push({
                 name: item,
-                type: 'file'
+                type: 'file',
+                path: itemPath
             });
         }
     }

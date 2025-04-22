@@ -1,23 +1,30 @@
-import React, { useEffect, useState } from 'react';
-import { File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus, MoreHorizontal, Download, Search, X } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import {
+  File, FolderOpen, ChevronDown, ChevronRight, RefreshCw, FilePlus, FolderPlus,
+  MoreHorizontal, Download, Search, X, Trash2, Edit, Copy, FileText, Code,
+  FileJson, FileImage, Coffee, FileCode, FileCog, FileSpreadsheet, FileArchive
+} from 'lucide-react';
 import { IpcRendererEvent } from 'electron';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import PluginMarketplace from './PluginMarketplace';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSeparator } from './ui/context-menu';
 
 interface FolderStructureItem {
     name: string;
     type: 'directory' | 'file';
     children?: FolderStructureItem[];
+    path?: string; // Đường dẫn đầy đủ đến file/thư mục
 }
 
 interface ContentAreaProps {
     activeTab: string;
     onFileSelect: (filePath: string) => void;
+    onFileDeleted?: (filePath: string) => void;
     currentContent: string;
 }
 
-const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, currentContent }) => {
+const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, onFileDeleted, currentContent }) => {
     const [folderStructure, setFolderStructure] = useState<FolderStructureItem | null>(null); // Store folder/file structure
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
     const [plugins, setPlugins] = useState<string[]>([]);
@@ -27,6 +34,13 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     const [showMarketplace, setShowMarketplace] = useState<boolean>(false);
     const [loadingAvailablePlugins, setLoadingAvailablePlugins] = useState<boolean>(false);
     const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null); // Store selected plugin for details view
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set()); // Lưu trạng thái mở rộng của thư mục
+    const [contextMenuPosition, setContextMenuPosition] = useState<{x: number, y: number} | null>(null);
+    const [contextMenuTarget, setContextMenuTarget] = useState<FolderStructureItem | null>(null);
+    const [isRenaming, setIsRenaming] = useState<string | null>(null); // Lưu đường dẫn của file/thư mục đang đổi tên
+    const [newName, setNewName] = useState<string>(''); // Tên mới khi đổi tên
+    const [searchQuery, setSearchQuery] = useState<string>(''); // Tìm kiếm trong explorer
+    const renameInputRef = useRef<HTMLInputElement>(null);
     const renderContent = () => {
         switch (activeTab) {
             case 'explorer':
@@ -34,24 +48,97 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
                     <div className="flex flex-col h-full">
                         <div className="flex items-center justify-between p-2 text-xs">
                             <div className="flex items-center space-x-2">
-                                <RefreshCw size={14} className="text-gray-400 hover:text-white cursor-pointer" />
-                                <FilePlus size={14} className="text-gray-400 hover:text-white cursor-pointer"/>
-                                <FolderPlus size={14} className="text-gray-400 hover:text-white cursor-pointer" onClick={openFolder} />
+                                <RefreshCw
+                                    size={14}
+                                    className="text-gray-400 hover:text-white cursor-pointer"
+                                    onClick={refreshFolderStructure}
+                                    title="Refresh"
+                                />
+                                <FilePlus
+                                    size={14}
+                                    className="text-gray-400 hover:text-white cursor-pointer"
+                                    onClick={() => handleCreateNewFile()}
+                                    title="New File"
+                                />
+                                <FolderPlus
+                                    size={14}
+                                    className="text-gray-400 hover:text-white cursor-pointer"
+                                    onClick={selectedFolder ? () => handleCreateNewFolder() : openFolder}
+                                    title={selectedFolder ? "New Folder" : "Open Folder"}
+                                />
                                 <MoreHorizontal size={14} className="text-gray-400 hover:text-white cursor-pointer" />
+                            </div>
+
+                            {/* Tìm kiếm trong explorer */}
+                            <div className="flex items-center ml-2">
+                                <div className="relative">
+                                    <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search"
+                                        className="bg-[#3c3c3c] text-white text-xs pl-8 pr-2 py-1 rounded w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        value={searchQuery}
+                                        onChange={(e) => handleSearch(e.target.value)}
+                                    />
+                                    {searchQuery && (
+                                        <X
+                                            size={14}
+                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer"
+                                            onClick={() => setSearchQuery('')}
+                                        />
+                                    )}
+                                </div>
                             </div>
                         </div>
                         {selectedFolder ? (
-                            <div className="overflow-y-auto">
+                            <div className="overflow-y-auto flex-1">
                                 <div className="text-sm">
                                     <div
-                                        className="flex items-center px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer"
+                                        className="flex items-center px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer group"
                                         onClick={() => toggleRootFolder()}
+                                        onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setContextMenuPosition({ x: e.clientX, y: e.clientY });
+                                            setContextMenuTarget(folderStructure);
+                                        }}
                                     >
                                         {showChildren ?
                                             <ChevronDown size={16} className="text-gray-400" /> :
                                             <ChevronRight size={16} className="text-gray-400" />
                                         }
                                         <span className="ml-1 font-semibold">{folderStructure?.name || 'No folder'}</span>
+
+                                        {/* Hiển thị các nút thao tác khi hover vào thư mục gốc */}
+                                        <div className="hidden group-hover:flex ml-auto space-x-1">
+                                            <FilePlus
+                                                size={14}
+                                                className="text-gray-400 hover:text-white"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCreateNewFile();
+                                                }}
+                                                title="New File"
+                                            />
+                                            <FolderPlus
+                                                size={14}
+                                                className="text-gray-400 hover:text-white"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCreateNewFolder();
+                                                }}
+                                                title="New Folder"
+                                            />
+                                            <RefreshCw
+                                                size={14}
+                                                className="text-gray-400 hover:text-white"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    refreshFolderStructure();
+                                                }}
+                                                title="Refresh"
+                                            />
+                                        </div>
                                     </div>
                                     {showChildren && (
                                         <div className="pl-4">
@@ -299,7 +386,6 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
         window.electron.ipcRenderer.send('open-folder-request');
        // ipcRenderer.send('open-folder-request');
     };
-    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
     const toggleFolder = (folderName: string) => {
         setExpandedFolders(prev => {
@@ -317,25 +403,353 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
         setShowChildren(prev => !prev);
     };
 
+    // Hàm lấy biểu tượng cho từng loại file
+    const getFileIcon = (fileName: string) => {
+        const extension = fileName.split('.').pop()?.toLowerCase();
+        switch (extension) {
+            case 'js':
+                return <Coffee size={16} className="text-yellow-400" />;
+            case 'ts':
+            case 'tsx':
+                return <FileCode size={16} className="text-blue-500" />;
+            case 'jsx':
+                return <FileCode size={16} className="text-yellow-500" />;
+            case 'json':
+                return <FileJson size={16} className="text-yellow-300" />;
+            case 'html':
+                return <Code size={16} className="text-orange-400" />;
+            case 'css':
+                return <FileCode size={16} className="text-blue-400" />;
+            case 'png':
+            case 'jpg':
+            case 'jpeg':
+            case 'gif':
+            case 'svg':
+                return <FileImage size={16} className="text-purple-400" />;
+            case 'md':
+                return <FileText size={16} className="text-gray-400" />;
+            case 'pdf':
+                return <FileText size={16} className="text-red-400" />;
+            case 'zip':
+            case 'rar':
+            case '7z':
+                return <FileArchive size={16} className="text-gray-500" />;
+            case 'xls':
+            case 'xlsx':
+            case 'csv':
+                return <FileSpreadsheet size={16} className="text-green-500" />;
+            case 'py':
+                return <FileCog size={16} className="text-blue-600" />;
+            default:
+                return <File size={16} className="text-blue-400" />;
+        }
+    };
+
+    // Hàm xử lý khi nhấp chuột phải vào file/thư mục
+    const handleContextMenu = (e: React.MouseEvent, node: FolderStructureItem) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenuPosition({ x: e.clientX, y: e.clientY });
+        setContextMenuTarget(node);
+    };
+
+    // Hàm đóng menu ngữ cảnh
+    const closeContextMenu = () => {
+        setContextMenuPosition(null);
+        setContextMenuTarget(null);
+    };
+
+    // Hàm tạo file mới
+    const handleCreateNewFile = (parentPath: string = selectedFolder || '') => {
+        const newFileName = 'new-file.txt';
+        window.electron.ipcRenderer.send('create-new-file-request', `${parentPath}/${newFileName}`);
+        // Sau khi tạo file, cập nhật lại cấu trúc thư mục
+        window.electron.ipcRenderer.once('new-file-created', () => {
+            refreshFolderStructure();
+        });
+    };
+
+    // Hàm tạo thư mục mới
+    const handleCreateNewFolder = (parentPath: string = selectedFolder || '') => {
+        const newFolderName = 'new-folder';
+        window.electron.ipcRenderer.send('create-new-folder-request', `${parentPath}/${newFolderName}`);
+        // Sau khi tạo thư mục, cập nhật lại cấu trúc thư mục
+        window.electron.ipcRenderer.once('new-folder-created', () => {
+            refreshFolderStructure();
+        });
+    };
+
+    // Hàm xóa file/thư mục
+    const handleDelete = (node: FolderStructureItem) => {
+        if (!node.path) return;
+
+        const isDirectory = node.type === 'directory';
+        const confirmMessage = isDirectory
+            ? `Bạn có chắc muốn xóa thư mục ${node.name} và tất cả nội dung bên trong?`
+            : `Bạn có chắc muốn xóa file ${node.name}?`;
+
+        if (window.confirm(confirmMessage)) {
+            // Cập nhật UI trực tiếp bằng cách tạo một bản sao của folderStructure
+            // và xóa file/thư mục trong đó
+            const removeNode = (parentNode: FolderStructureItem): FolderStructureItem => {
+                if (!parentNode.children) return parentNode;
+
+                return {
+                    ...parentNode,
+                    children: parentNode.children
+                        .filter(child => child.path !== node.path)
+                        .map(removeNode)
+                };
+            };
+
+            if (folderStructure) {
+                console.log('Removing node from UI:', node.path);
+                const updatedStructure = removeNode(folderStructure);
+                setFolderStructure(updatedStructure);
+
+                // Nếu file đang được mở, thông báo cho component cha
+                if (node.type === 'file' && node.path) {
+                    onFileDeleted?.(node.path);
+                }
+            }
+
+            // Gửi yêu cầu xóa đến main process
+            window.electron.ipcRenderer.send('delete-item-request', node.path, isDirectory);
+            window.electron.ipcRenderer.once('item-deleted', (event, result) => {
+                console.log('Item deleted result:', result);
+            });
+        }
+    };
+
+    // Hàm đổi tên file/thư mục
+    const handleRename = (node: FolderStructureItem) => {
+        if (!node.path) return;
+        setIsRenaming(node.path);
+        setNewName(node.name);
+        // Focus vào input sau khi render
+        setTimeout(() => {
+            if (renameInputRef.current) {
+                renameInputRef.current.focus();
+                renameInputRef.current.select();
+            }
+        }, 50);
+    };
+
+    // Hàm xử lý khi hoàn tất đổi tên (khi nhấn Enter hoặc click ra ngoài)
+    const handleRenameComplete = (e: React.KeyboardEvent<HTMLInputElement> | React.FocusEvent<HTMLInputElement>) => {
+        // Tránh xử lý nhiều lần
+        if (!isRenaming) return;
+
+        console.log('handleRenameComplete called', { isKeyEvent: 'key' in e, key: 'key' in e ? e.key : 'n/a', isRenaming, newName });
+
+        // Lưu lại giá trị isRenaming hiện tại và đặt về null ngay lập tức để tránh gọi nhiều lần
+        const currentRenamingPath = isRenaming;
+        setIsRenaming(null);
+
+        // Nếu tên mới không rỗng
+        if (newName.trim() !== '') {
+            console.log('Sending rename request', { path: currentRenamingPath, newName: newName.trim() });
+
+            // Cập nhật UI trực tiếp bằng cách tạo một bản sao của folderStructure
+            // và thay đổi tên của file/thư mục trong đó
+            const updateNodeName = (node: FolderStructureItem): FolderStructureItem => {
+                if (node.path === currentRenamingPath) {
+                    // Đường dẫn mới sau khi đổi tên
+                    // Xử lý cả đường dẫn Windows (\) và Unix (/)
+                    const lastSlashIndex = Math.max(
+                        node.path.lastIndexOf('/'),
+                        node.path.lastIndexOf('\\')
+                    );
+
+                    const parentDir = node.path.substring(0, lastSlashIndex + 1);
+                    const newPath = parentDir + newName.trim();
+
+                    console.log('Updating node in UI:', {
+                        oldPath: node.path,
+                        oldName: node.name,
+                        newName: newName.trim(),
+                        newPath: newPath
+                    });
+
+                    // Nếu là file, thông báo cho component cha để cập nhật tab
+                    if (node.type === 'file') {
+                        // Thông báo cho component cha rằng file đã được đổi tên
+                        // Sử dụng onFileDeleted để đóng file cũ và onFileSelect để mở file mới
+                        onFileDeleted?.(node.path);
+                        setTimeout(() => {
+                            onFileSelect(newPath);
+                        }, 100);
+                    }
+
+                    return {
+                        ...node,
+                        name: newName.trim(),
+                        path: newPath
+                    };
+                }
+
+                if (node.children) {
+                    return {
+                        ...node,
+                        children: node.children.map(updateNodeName)
+                    };
+                }
+
+                return node;
+            };
+
+            if (folderStructure) {
+                const updatedStructure = updateNodeName(folderStructure);
+                setFolderStructure(updatedStructure);
+            }
+
+            // Gửi yêu cầu đổi tên đến main process
+            window.electron.ipcRenderer.send('rename-item-request', currentRenamingPath, newName.trim());
+        }
+    };
+
+    // Hàm xử lý khi nhấn Escape để hủy đổi tên
+    const handleCancelRename = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Escape') {
+            setIsRenaming(null);
+        }
+    };
+
+    // Hàm làm mới cấu trúc thư mục
+    const refreshFolderStructure = () => {
+        if (selectedFolder) {
+            console.log('Refreshing folder structure for:', selectedFolder);
+
+            // Kiểm tra xem selectedFolder có phải là đường dẫn đầy đủ không
+            // Nếu chỉ là tên thư mục, không làm mới mà chỉ log lỗi
+            if (!selectedFolder.includes('\\') && !selectedFolder.includes('/')) {
+                console.error('Selected folder is not a full path:', selectedFolder);
+                return;
+            }
+
+            // Thêm xử lý lỗi khi thư mục không tồn tại
+            window.electron.ipcRenderer.send('refresh-folder-structure', selectedFolder);
+            window.electron.ipcRenderer.once('folder-structure-error', (event, error) => {
+                console.error('Error refreshing folder structure:', error);
+                // Chỉ log lỗi, không mở hộp thoại chọn thư mục
+            });
+        } else {
+            console.error('No folder selected');
+        }
+    };
+
+    // Hàm tìm kiếm trong explorer
+    const handleSearch = (query: string) => {
+        setSearchQuery(query);
+    };
+
+    // Hàm lọc kết quả tìm kiếm
+    const filterItems = (node: FolderStructureItem, query: string): FolderStructureItem | null => {
+        if (!query.trim()) return node;
+
+        // Nếu là file và tên chứa query
+        if (node.type === 'file' && node.name.toLowerCase().includes(query.toLowerCase())) {
+            return node;
+        }
+
+        // Nếu là thư mục
+        if (node.type === 'directory' && node.children) {
+            const filteredChildren = node.children
+                .map(child => filterItems(child, query))
+                .filter(Boolean) as FolderStructureItem[];
+
+            if (filteredChildren.length > 0 || node.name.toLowerCase().includes(query.toLowerCase())) {
+                return {
+                    ...node,
+                    children: filteredChildren
+                };
+            }
+        }
+
+        return null;
+    };
+
     const renderFolderOrFiles = (node: FolderStructureItem) => {
         if (!node) return null;
+
+        // Nếu đang tìm kiếm, lọc kết quả
+        if (searchQuery.trim()) {
+            const filteredNode = filterItems(node, searchQuery);
+            if (!filteredNode) return null;
+            // Mở rộng tất cả các thư mục khi tìm kiếm
+            if (filteredNode.type === 'directory' && !expandedFolders.has(filteredNode.name)) {
+                const newExpandedFolders = new Set(expandedFolders);
+                newExpandedFolders.add(filteredNode.name);
+                setExpandedFolders(newExpandedFolders);
+            }
+        }
 
         return (
             <ul className="pl-4">
                 <li key={node.name} className="flex flex-col">
-                    <div
-                        className="flex items-center cursor-pointer text-white hover:bg-gray-700 p-1 rounded"
-                        onClick={() => handleItemClick(node)}
-                    >
-                        {node.type === "directory" ? (
-                            expandedFolders.has(node.name) ?
-                            <ChevronDown size={16} className="text-gray-400" /> :
-                            <ChevronRight size={16} className="text-gray-400" />
-                        ) : (
-                            <File size={16} className="text-blue-400" />
-                        )}
-                        <span className="ml-2">{node.name}</span>
-                    </div>
+                    <ContextMenuTrigger>
+                        <div
+                            className="flex items-center cursor-pointer text-white hover:bg-gray-700 p-1 rounded group"
+                            onClick={() => handleItemClick(node)}
+                            onContextMenu={(e) => handleContextMenu(e, node)}
+                        >
+                            {node.type === "directory" ? (
+                                expandedFolders.has(node.name) ?
+                                <ChevronDown size={16} className="text-gray-400" /> :
+                                <ChevronRight size={16} className="text-gray-400" />
+                            ) : (
+                                getFileIcon(node.name)
+                            )}
+
+                            {isRenaming === node.path ? (
+                                <input
+                                    ref={renameInputRef}
+                                    type="text"
+                                    className="ml-2 bg-gray-800 text-white border border-blue-500 rounded px-1"
+                                    value={newName}
+                                    onChange={(e) => setNewName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault(); // Ngăn chặn sự kiện mặc định
+                                            e.stopPropagation(); // Ngăn chặn sự kiện lan truyền
+                                            handleRenameComplete(e);
+                                        } else if (e.key === 'Escape') {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleCancelRename(e);
+                                        }
+                                    }}
+                                    onBlur={(e) => {
+                                        // Chỉ xử lý blur nếu vẫn đang đổi tên
+                                        if (isRenaming) {
+                                            handleRenameComplete(e);
+                                        }
+                                    }}
+                                    // Ngăn chặn sự kiện click lan truyền
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            ) : (
+                                <span className="ml-2">{node.name}</span>
+                            )}
+
+                            {/* Hiển thị các nút thao tác khi hover */}
+                            <div className="hidden group-hover:flex ml-auto space-x-1">
+                                <Edit size={14} className="text-gray-400 hover:text-white"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRename(node);
+                                    }}
+                                />
+                                <Trash2 size={14} className="text-gray-400 hover:text-red-500"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(node);
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </ContextMenuTrigger>
+
                     {node.type === "directory" && expandedFolders.has(node.name) && node.children && (
                         <div>{node.children.map(child => renderFolderOrFiles(child))}</div>
                     )}
@@ -344,13 +758,20 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
         );
     };
 
-    const handleItemClick = (node: any) => {
+    const handleItemClick = (node: FolderStructureItem) => {
         if (node.type === "file") {
-            const filePath = selectedFolder ? `${selectedFolder}/${node.name}` : node.name;
+            // Sử dụng đường dẫn đầy đủ từ node nếu có
+            const filePath = node.path || (selectedFolder ? `${selectedFolder}/${node.name}` : node.name);
+            console.log('File clicked:', { nodePath: node.path, filePath });
             // Instead of directly sending the IPC message, notify the parent component
             onFileSelect(filePath);
         } else if (node.type === "directory") {
             toggleFolder(node.name);
+            // Nếu thư mục có đường dẫn đầy đủ, cập nhật selectedFolder
+            if (node.path) {
+                console.log('Directory clicked, updating selectedFolder:', node.path);
+                setSelectedFolder(node.path);
+            }
         }
     };
 
@@ -472,13 +893,28 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     // We don't need to listen for file-content here anymore
     // The App component will handle file content loading
     useEffect(() => {
+        // Lắng nghe sự kiện folder-structure
         window.electron.ipcRenderer.on('folder-structure', (event, structure) => {
+            console.log('Received folder structure:', structure);
             setFolderStructure(structure);
-            setSelectedFolder(structure.name); // Lưu thư mục đã chọn
+            // Lưu đường dẫn đầy đủ của thư mục đã chọn
+            if (structure && structure.path) {
+                console.log('Setting selected folder to:', structure.path);
+                setSelectedFolder(structure.path);
+            } else {
+                console.log('Structure does not have a valid path:', structure);
+            }
+        });
+
+        // Lắng nghe sự kiện item-renamed để log kết quả
+        window.electron.ipcRenderer.on('item-renamed', (event, result) => {
+            console.log('Item renamed event received:', result);
+            // Không làm mới cấu trúc thư mục vì đã cập nhật UI trực tiếp trong handleRenameComplete
         });
 
         return () => {
             window.electron.ipcRenderer.removeAllListeners('folder-structure');
+            window.electron.ipcRenderer.removeAllListeners('item-renamed');
         };
     }, []);
     // Lấy danh sách plugin khi tab extensions được mở
@@ -548,6 +984,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
     return (
         <div
             className="bg-[#252526] h-full overflow-hidden relative"
+            onClick={closeContextMenu}
         >
             {renderContent()}
             {pluginMessage && (
@@ -557,6 +994,79 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, cur
             )}
             {showMarketplace && (
                 <PluginMarketplace onClose={() => setShowMarketplace(false)} />
+            )}
+
+            {/* Menu ngữ cảnh */}
+            {contextMenuPosition && contextMenuTarget && (
+                <div
+                    className="fixed bg-[#252526] shadow-lg rounded z-50 text-sm border border-[#3c3c3c] overflow-hidden"
+                    style={{
+                        left: contextMenuPosition.x,
+                        top: contextMenuPosition.y,
+                        minWidth: '180px'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="p-1">
+                        {contextMenuTarget.type === 'directory' && (
+                            <>
+                                <div
+                                    className="flex items-center px-3 py-1 hover:bg-[#2a2d2e] cursor-pointer"
+                                    onClick={() => {
+                                        handleCreateNewFile(contextMenuTarget.path);
+                                        closeContextMenu();
+                                    }}
+                                >
+                                    <FilePlus size={16} className="mr-2 text-blue-400" />
+                                    <span>New File</span>
+                                </div>
+                                <div
+                                    className="flex items-center px-3 py-1 hover:bg-[#2a2d2e] cursor-pointer"
+                                    onClick={() => {
+                                        handleCreateNewFolder(contextMenuTarget.path);
+                                        closeContextMenu();
+                                    }}
+                                >
+                                    <FolderPlus size={16} className="mr-2 text-yellow-400" />
+                                    <span>New Folder</span>
+                                </div>
+                                <ContextMenuSeparator />
+                            </>
+                        )}
+
+                        <div
+                            className="flex items-center px-3 py-1 hover:bg-[#2a2d2e] cursor-pointer"
+                            onClick={() => {
+                                handleRename(contextMenuTarget);
+                                closeContextMenu();
+                            }}
+                        >
+                            <Edit size={16} className="mr-2 text-green-400" />
+                            <span>Rename</span>
+                        </div>
+                        <div
+                            className="flex items-center px-3 py-1 hover:bg-[#2a2d2e] cursor-pointer"
+                            onClick={() => {
+                                handleDelete(contextMenuTarget);
+                                closeContextMenu();
+                            }}
+                        >
+                            <Trash2 size={16} className="mr-2 text-red-400" />
+                            <span>Delete</span>
+                        </div>
+                        <ContextMenuSeparator />
+                        <div
+                            className="flex items-center px-3 py-1 hover:bg-[#2a2d2e] cursor-pointer"
+                            onClick={() => {
+                                refreshFolderStructure();
+                                closeContextMenu();
+                            }}
+                        >
+                            <RefreshCw size={16} className="mr-2 text-blue-400" />
+                            <span>Refresh</span>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -17,7 +17,7 @@ const Terminal: React.FC<TerminalProps> = ({
   onClose
 }) => {
   return (
-    <div className="bg-[#1e1e1e] border-t border-[#3c3c3c]" style={{ height: '35%' }}>
+    <div className="bg-[#1e1e1e] border-t border-[#3c3c3c] flex flex-col h-full overflow-hidden">
       <div className="flex bg-[#252526] text-sm">
         <div
           className={`px-3 py-1 border-r border-[#3c3c3c] cursor-pointer ${activeTab === 'PROBLEMS' ? 'bg-[#1e1e1e]' : ''}`}
@@ -61,7 +61,7 @@ const Terminal: React.FC<TerminalProps> = ({
       </div>
 
       {activeTab === 'TERMINAL' && (
-        <div className="p-2 text-sm font-mono h-full overflow-auto">
+        <div className="p-2 text-sm font-mono flex-1 overflow-auto">
           {isRunning ? (
             <div className="flex items-center text-yellow-400 mb-2">
               <span className="animate-pulse mr-2">●</span>
@@ -96,7 +96,7 @@ const Terminal: React.FC<TerminalProps> = ({
       )}
 
       {activeTab === 'PROBLEMS' && (
-        <div className="p-2 text-sm text-white h-full overflow-auto">
+        <div className="p-2 text-sm text-white flex-1 overflow-auto">
           <div className="flex items-center justify-center h-full text-gray-400">
             No problems have been detected in the workspace.
           </div>
@@ -104,7 +104,7 @@ const Terminal: React.FC<TerminalProps> = ({
       )}
 
       {activeTab === 'OUTPUT' && (
-        <div className="p-2 text-sm text-white h-full overflow-auto">
+        <div className="p-2 text-sm text-white flex-1 overflow-auto">
           <div className="flex items-center justify-center h-full text-gray-400">
             No output to show.
           </div>
@@ -112,7 +112,7 @@ const Terminal: React.FC<TerminalProps> = ({
       )}
 
       {activeTab === 'DEBUG CONSOLE' && (
-        <div className="p-2 text-sm text-white h-full overflow-auto">
+        <div className="p-2 text-sm text-white flex-1 overflow-auto">
           <div className="flex items-center justify-center h-full text-gray-400">
             Debug console is inactive.
           </div>
@@ -120,7 +120,7 @@ const Terminal: React.FC<TerminalProps> = ({
       )}
 
       {activeTab === 'PORTS' && (
-        <div className="p-2 text-sm text-white h-full overflow-auto">
+        <div className="p-2 text-sm text-white flex-1 overflow-auto">
           <div className="flex flex-col">
             <div className="flex justify-between p-2 border-b border-[#3c3c3c]">
               <span>Port</span>
@@ -142,7 +142,7 @@ const Terminal: React.FC<TerminalProps> = ({
       )}
 
       {activeTab === 'AUGMENT NEXT EDIT' && (
-        <div className="p-2 text-sm text-white h-full overflow-auto">
+        <div className="p-2 text-sm text-white flex-1 overflow-auto">
           <div className="flex items-center justify-center h-full text-gray-400">
             Augment Next Edit is ready.
           </div>
