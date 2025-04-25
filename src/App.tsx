@@ -293,11 +293,28 @@ const App: React.FC = () => {
       console.log(`Menu items for edit: ${JSON.stringify(pluginMenuItems.filter(item => item.parentMenu.toLowerCase() === 'edit').map(item => item.label))}`);
       console.log(`Running code in ${language} language, code length: ${currentContent?.length || 0}`);
 
+      // Lưu trạng thái để biết rằng chúng ta vừa chạy code
+      // Điều này sẽ được sử dụng để focus lại vào editor sau khi nhận kết quả
+      window.lastAction = 'run-code';
+
+      // Lưu lại editor element trước khi gửi yêu cầu chạy code
+      const editorElement = document.querySelector('.monaco-editor');
+
+      // Gửi yêu cầu chạy code
       window.electron.ipcRenderer.send('run-code', {
         code: currentContent,
         fileName: activeFile,
         language: language
       });
+
+      // Đặt timeout để focus lại vào editor sau khi terminal được hiển thị
+      setTimeout(() => {
+        if (editorElement) {
+          console.log('Focusing editor after run code request');
+          (editorElement as HTMLElement).click();
+          (editorElement as HTMLElement).focus();
+        }
+      }, 500);
     } else {
       alert('No file is currently open. Please open a file before running code.');
     }
@@ -310,6 +327,21 @@ const App: React.FC = () => {
       console.log('Stopping code execution');
       window.electron.ipcRenderer.send('stop-execution');
       setIsRunning(false);
+
+      // Lưu trạng thái để biết rằng chúng ta vừa dừng chạy code
+      window.lastAction = 'stop-execution';
+
+      // Lưu lại editor element trước khi gửi yêu cầu dừng chạy code
+      const editorElement = document.querySelector('.monaco-editor');
+
+      // Đặt timeout để focus lại vào editor sau khi terminal được cập nhật
+      setTimeout(() => {
+        if (editorElement) {
+          console.log('Focusing editor after stop execution request');
+          (editorElement as HTMLElement).click();
+          (editorElement as HTMLElement).focus();
+        }
+      }, 500);
     }
     closeAllMenus();
   };
@@ -408,11 +440,33 @@ const App: React.FC = () => {
       if (e.key === 'F5') {
         e.preventDefault();
         handleRunCode();
+
+        // Đặt timeout để focus lại vào editor sau khi chạy code
+        setTimeout(() => {
+          // Tìm editor và focus vào nó
+          const editorElement = document.querySelector('.monaco-editor');
+          if (editorElement) {
+            console.log('Focusing editor after F5 key press');
+            (editorElement as HTMLElement).click();
+            (editorElement as HTMLElement).focus();
+          }
+        }, 300);
       }
       // Shift+F5 để dừng chạy code
       if (e.shiftKey && e.key === 'F5') {
         e.preventDefault();
         handleStopExecution();
+
+        // Đặt timeout để focus lại vào editor sau khi dừng chạy code
+        setTimeout(() => {
+          // Tìm editor và focus vào nó
+          const editorElement = document.querySelector('.monaco-editor');
+          if (editorElement) {
+            console.log('Focusing editor after Shift+F5 key press');
+            (editorElement as HTMLElement).click();
+            (editorElement as HTMLElement).focus();
+          }
+        }, 300);
       }
       // Shift+Alt+F để định dạng mã với Prettier
       if (e.shiftKey && e.altKey && e.key === 'F') {
@@ -498,8 +552,30 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Hàm để focus lại vào editor
+  const focusEditorAfterAction = () => {
+    // Đặt timeout để đảm bảo UI đã cập nhật
+    setTimeout(() => {
+      // Tìm editor và focus vào nó
+      const editorElement = document.querySelector('.monaco-editor');
+      if (editorElement) {
+        console.log('Focusing editor after action');
+        // Click trước để đảm bảo editor nhận được focus
+        (editorElement as HTMLElement).click();
+        (editorElement as HTMLElement).focus();
+        // Xóa trạng thái lastAction
+        window.lastAction = '';
+      }
+    }, 200);
+  };
+
   // Lắng nghe kết quả chạy code
   useEffect(() => {
+    // Hủy đăng ký các listener cũ trước khi đăng ký mới
+    window.electron.ipcRenderer.removeAllListeners('run-code-output');
+    window.electron.ipcRenderer.removeAllListeners('run-code-result');
+    window.electron.ipcRenderer.removeAllListeners('stop-execution-result');
+
     const handleRunCodeOutput = (_event: any, data: { type: string, text: string }) => {
       console.log(`Run code output (${data.type}):`, data.text);
       setTerminalOutput(prev => prev + data.text);
@@ -511,6 +587,19 @@ const App: React.FC = () => {
 
       // Thêm thông báo kết thúc
       setTerminalOutput(prev => prev + `\n\n--- ${result.success ? 'SUCCESS' : 'ERROR'} ---\n${result.message}\n`);
+
+      // Focus lại vào editor sau khi nhận kết quả chạy code
+      if (window.lastAction === 'run-code' || window.lastAction === 'stop-execution') {
+        // Đặt timeout để đảm bảo UI đã cập nhật
+        setTimeout(() => {
+          focusEditorAfterAction();
+
+          // Thêm một lần nữa sau 500ms để đảm bảo editor được focus
+          setTimeout(() => {
+            focusEditorAfterAction();
+          }, 500);
+        }, 200);
+      }
     };
 
     const handleStopExecutionResult = (_event: any, result: any) => {
@@ -519,6 +608,28 @@ const App: React.FC = () => {
 
       // Thêm thông báo dừng chạy
       setTerminalOutput(prev => prev + `\n\n--- STOPPED ---\n${result.message}\n`);
+
+      // Focus lại vào editor sau khi dừng chạy code
+      // Đặt timeout để đảm bảo UI đã cập nhật
+      setTimeout(() => {
+        focusEditorAfterAction();
+
+        // Thêm một lần nữa sau 500ms để đảm bảo editor được focus
+        setTimeout(() => {
+          focusEditorAfterAction();
+
+          // Thêm một lần nữa sau 1000ms để đảm bảo editor được focus
+          setTimeout(() => {
+            // Tìm editor và focus vào nó
+            const editorElement = document.querySelector('.monaco-editor');
+            if (editorElement) {
+              console.log('Final attempt to focus editor after stop execution');
+              (editorElement as HTMLElement).click();
+              (editorElement as HTMLElement).focus();
+            }
+          }, 1000);
+        }, 500);
+      }, 200);
     };
 
     // Đăng ký các listener
@@ -536,6 +647,14 @@ const App: React.FC = () => {
 
   // Lắng nghe sự kiện từ main process
   useEffect(() => {
+    // Hủy đăng ký các listener cũ trước khi đăng ký mới
+    // Điều này giúp tránh việc đăng ký nhiều lần cùng một listener
+    window.electron.ipcRenderer.removeAllListeners('file-opened');
+    window.electron.ipcRenderer.removeAllListeners('file-content');
+    window.electron.ipcRenderer.removeAllListeners('file-saved');
+    window.electron.ipcRenderer.removeAllListeners('folder-structure');
+    window.electron.ipcRenderer.removeAllListeners('export-to-pdf-result');
+
     // Lắng nghe sự kiện khi file được mở
     const handleFileOpened = (_event: any, data: any) => {
       console.log('File opened event received:', data);
@@ -679,6 +798,11 @@ const App: React.FC = () => {
 
   // Effect for plugin-related events
   useEffect(() => {
+    // Hủy đăng ký các listener cũ trước khi đăng ký mới
+    window.electron.ipcRenderer.removeAllListeners('plugin-list');
+    window.electron.ipcRenderer.removeAllListeners('menu-items-changed');
+    window.electron.ipcRenderer.removeAllListeners('menu-action-result');
+
     // Listen for plugin list updates
     window.electron.ipcRenderer.on('plugin-list', handlePluginListUpdate);
     window.electron.ipcRenderer.on('menu-items-changed', handleMenuItemsChanged);

@@ -59,8 +59,13 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
                 ...prev,
                 language: detectedLanguage
             }));
+
+            // Focus lại vào editor khi file active thay đổi
+            if (editor) {
+                setTimeout(() => editor.focus(), 100);
+            }
         }
-    }, [propActiveFile]);
+    }, [propActiveFile, editor]);
 
     // State cho StatusBar component - để tương thích với component StatusBar
     const [statusBarStats] = useState({
@@ -112,6 +117,40 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
             }));
         });
 
+        // Thêm listener cho sự kiện focus và blur
+        editor.onDidFocusEditorText(() => {
+            console.log('Editor focused');
+        });
+
+        editor.onDidBlurEditorText(() => {
+            console.log('Editor blurred');
+            // Nếu lastAction là run-code, focus lại vào editor
+            if (window.lastAction === 'run-code' || window.lastAction === 'stop-execution') {
+                setTimeout(() => {
+                    console.log('Trying to focus editor after blur in onDidBlurEditorText');
+                    editor.focus();
+
+                    // Thêm một lần nữa sau 300ms để đảm bảo editor được focus
+                    setTimeout(() => {
+                        console.log('Second attempt to focus editor after blur');
+                        editor.focus();
+                    }, 300);
+                }, 200);
+            }
+        });
+
+        // Thêm listener cho sự kiện keydown trên editor
+        editor.onKeyDown((e: any) => {
+            console.log('Editor key down:', e.browserEvent.key);
+            // Nếu là phím F5, đặt timeout để focus lại vào editor
+            if (e.browserEvent.key === 'F5') {
+                setTimeout(() => {
+                    console.log('Focusing editor after F5 key press in editor');
+                    editor.focus();
+                }, 300);
+            }
+        });
+
         // Cập nhật thông tin ban đầu
         const currentLanguage = editor.getModel()?.getLanguageId() || 'plaintext';
         console.log('Initial language:', currentLanguage);
@@ -136,6 +175,27 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
             language: currentLanguage,
             spaces: editor.getModel()?.getOptions().tabSize || 2
         }));
+
+        // Focus vào editor sau khi mount
+        setTimeout(() => {
+            editor.focus();
+        }, 100);
+
+        // Lắng nghe sự kiện run-code-result từ main process
+        window.electron.ipcRenderer.on('run-code-result', () => {
+            console.log('Received run-code-result in editor, focusing editor...');
+            setTimeout(() => {
+                editor.focus();
+            }, 200);
+        });
+
+        // Lắng nghe sự kiện stop-execution-result từ main process
+        window.electron.ipcRenderer.on('stop-execution-result', () => {
+            console.log('Received stop-execution-result in editor, focusing editor...');
+            setTimeout(() => {
+                editor.focus();
+            }, 200);
+        });
     };
 
     const handleFileClick = (file: string) => {
@@ -318,16 +378,138 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
             language: defaultLanguage
         }));
         updateContent('');
+
+        // Focus lại vào editor sau khi tạo file mới
+        if (editor) {
+            setTimeout(() => editor.focus(), 100);
+        }
     };
 
     const saveFile = () => {
         if (activeFile) {
             //ipcRenderer.send('save-file-request', { filePath: activeFile, content: editorContent });
             window.electron.ipcRenderer.send('save-file-request', { filePath: activeFile, content: editorContent });
+
+            // Focus lại vào editor sau khi gửi yêu cầu lưu file
+            if (editor) {
+                setTimeout(() => editor.focus(), 100);
+            }
         }
     };
 
+    // Hàm để focus lại vào editor
+    const focusEditor = () => {
+        if (editor) {
+            console.log('Focusing editor...');
+            setTimeout(() => {
+                editor.focus();
+                // Đảm bảo rằng editor có thể nhận input
+                const editorElement = document.querySelector('.monaco-editor');
+                if (editorElement) {
+                    (editorElement as HTMLElement).click();
+                    (editorElement as HTMLElement).focus();
+                }
+            }, 100); // Đợi một chút để đảm bảo UI đã cập nhật
+        }
+    };
+
+    // Thêm useEffect để lắng nghe sự kiện keydown và keyup để đảm bảo không có sự kiện nào đang bị chặn
     useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Kiểm tra xem editor có focus không
+            const editorElement = document.querySelector('.monaco-editor');
+            if (editorElement && document.activeElement !== editorElement) {
+                console.log('Editor does not have focus, focusing it...');
+                focusEditor();
+            }
+        };
+
+        // Đăng ký sự kiện keydown
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [editor]);
+
+    // Thêm useEffect để lắng nghe sự kiện focus và blur để đảm bảo editor luôn nhận được focus
+    useEffect(() => {
+        if (!editor) return;
+
+        // Khi editor bị mất focus, kiểm tra xem có phải do chạy code không
+        const handleEditorBlur = () => {
+            console.log('Editor lost focus');
+            if (window.lastAction === 'run-code') {
+                // Đặt timeout để đảm bảo UI đã cập nhật
+                setTimeout(() => {
+                    console.log('Trying to focus editor after blur');
+                    focusEditor();
+                }, 300);
+            }
+        };
+
+        // Thêm listener cho sự kiện blur của editor
+        const editorElement = document.querySelector('.monaco-editor');
+        if (editorElement) {
+            editorElement.addEventListener('blur', handleEditorBlur);
+        }
+
+        return () => {
+            if (editorElement) {
+                editorElement.removeEventListener('blur', handleEditorBlur);
+            }
+        };
+    }, [editor]);
+
+    // Thêm useEffect để lắng nghe sự kiện run-code-result và focus lại vào editor
+    useEffect(() => {
+        // Hủy đăng ký các listener cũ trước khi đăng ký mới
+        window.electron.ipcRenderer.removeAllListeners('run-code-result');
+
+        const handleRunCodeResult = () => {
+            console.log('Received run-code-result, focusing editor...');
+            // Đặt timeout để đảm bảo UI đã cập nhật
+            setTimeout(() => {
+                focusEditor();
+
+                // Thêm một lần nữa sau 500ms để đảm bảo editor được focus
+                setTimeout(() => {
+                    console.log('Second attempt to focus editor after run-code-result');
+                    focusEditor();
+
+                    // Thêm một lần nữa sau 1000ms để đảm bảo editor được focus
+                    setTimeout(() => {
+                        console.log('Third attempt to focus editor after run-code-result');
+                        if (editor) {
+                            editor.focus();
+                        }
+
+                        // Tìm editor và focus vào nó
+                        const editorElement = document.querySelector('.monaco-editor');
+                        if (editorElement) {
+                            console.log('Final attempt to focus editor after run-code-result');
+                            (editorElement as HTMLElement).click();
+                            (editorElement as HTMLElement).focus();
+                        }
+                    }, 1000);
+                }, 500);
+            }, 200);
+        };
+
+        // Đăng ký listener
+        window.electron.ipcRenderer.on('run-code-result', handleRunCodeResult);
+
+        return () => {
+            window.electron.ipcRenderer.removeAllListeners('run-code-result');
+        };
+    }, [editor]);
+
+    useEffect(() => {
+        // Hủy đăng ký các listener cũ trước khi đăng ký mới
+        window.electron.ipcRenderer.removeAllListeners('file-content');
+        window.electron.ipcRenderer.removeAllListeners('file-saved');
+        window.electron.ipcRenderer.removeAllListeners('new-file-created');
+
         const fileContentListener = (_event: IpcRendererEvent, data: { content?: string, filePath?: string, error?: string }) => {
             console.log('Received file-content:', data);
             if (data.error) {
@@ -349,6 +531,9 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
                 ...prev,
                 language: detectedLanguage
             }));
+
+            // Focus lại vào editor sau khi nội dung được cập nhật
+            focusEditor();
         };
 
         const fileSavedListener = (_event: IpcRendererEvent, { success, filePath, error }: { success: boolean, filePath: string, error?: string }) => {
@@ -366,6 +551,9 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
                     ...prev,
                     language: detectedLanguage
                 }));
+
+                // Focus lại vào editor sau khi lưu file
+                focusEditor();
             } else {
                 setSaveStatus(`Failed to save file: ${error || 'Unknown error'}`);
             }
@@ -384,22 +572,27 @@ const Editor: React.FC<EditorProps> = ({ loadFileContent, updateContent, onStats
                     ...prev,
                     language: detectedLanguage
                 }));
+
+                // Focus lại vào editor sau khi tạo file mới
+                focusEditor();
             } else {
                 setSaveStatus(`Failed to create file: ${error || 'Unknown error'}`);
             }
             setTimeout(() => setSaveStatus(null), 3000);
         };
 
+        console.log('Registering IPC event listeners in Editor component');
         window.electron.ipcRenderer.on('file-content', fileContentListener);
         window.electron.ipcRenderer.on('file-saved', fileSavedListener);
         window.electron.ipcRenderer.on('new-file-created', newFileListener);
 
         return () => {
+            console.log('Removing IPC event listeners in Editor component');
             window.electron.ipcRenderer.removeAllListeners('file-content');
             window.electron.ipcRenderer.removeAllListeners('file-saved');
             window.electron.ipcRenderer.removeAllListeners('new-file-created');
         };
-    }, [openFiles]);
+    }, [openFiles, editor]);
 
     return (
         <div className="flex flex-col h-full">

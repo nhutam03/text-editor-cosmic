@@ -927,6 +927,11 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, onF
     // We don't need to listen for file-content here anymore
     // The App component will handle file content loading
     useEffect(() => {
+        // Hủy đăng ký các listener cũ trước khi đăng ký mới
+        window.electron.ipcRenderer.removeAllListeners('folder-structure');
+        window.electron.ipcRenderer.removeAllListeners('item-renamed');
+        window.electron.ipcRenderer.removeAllListeners('item-deleted');
+
         // Lắng nghe sự kiện folder-structure
         window.electron.ipcRenderer.on('folder-structure', (event, structure) => {
             console.log('Received folder structure:', structure);
@@ -995,7 +1000,10 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, onF
             }
         });
 
+        console.log('Registered IPC event listeners in ContentArea component');
+
         return () => {
+            console.log('Removing IPC event listeners in ContentArea component');
             window.electron.ipcRenderer.removeAllListeners('folder-structure');
             window.electron.ipcRenderer.removeAllListeners('item-renamed');
             window.electron.ipcRenderer.removeAllListeners('item-deleted');
@@ -1035,6 +1043,10 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, onF
         // Reset selected plugin when tab changes
         setSelectedPlugin(null);
 
+        // Hủy đăng ký các listener cũ trước khi đăng ký mới
+        window.electron.ipcRenderer.removeAllListeners("plugin-list");
+        window.electron.ipcRenderer.removeAllListeners("plugin-applied");
+
         if (activeTab === "extensions") {
             // Tải danh sách plugin đã cài đặt
             window.electron.ipcRenderer.invoke("get-plugins").then((pluginList: string[]) => {
@@ -1057,9 +1069,12 @@ const ContentArea: React.FC<ContentAreaProps> = ({  activeTab, onFileSelect, onF
                 setPluginMessage(message);
                 setTimeout(() => setPluginMessage(null), 5000); // Ẩn thông báo sau 5 giây
             });
+
+            console.log('Registered plugin-related IPC event listeners in ContentArea component');
         }
 
         return () => {
+            console.log('Removing plugin-related IPC event listeners in ContentArea component');
             window.electron.ipcRenderer.removeAllListeners("plugin-list");
             window.electron.ipcRenderer.removeAllListeners("plugin-applied");
         };
