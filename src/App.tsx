@@ -24,7 +24,7 @@ const App: React.FC = () => {
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [showRunMenu, setShowRunMenu] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  // Vẫn giữ lại state này để sử dụng cho các plugin khác
+  // State này được sử dụng trong handlePluginListUpdate và các hàm khác
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
   const [editorStats, setEditorStats] = useState({
@@ -536,7 +536,7 @@ const App: React.FC = () => {
         setInstalledPlugins(plugins || []);
 
         // Đăng ký lắng nghe sự kiện khi danh sách plugin thay đổi
-        window.electron.ipcRenderer.on("plugin-list", (_event, pluginList) => {
+        window.electron.ipcRenderer.on("plugin-list", (_event: Electron.IpcRendererEvent, pluginList: string[]) => {
           setInstalledPlugins(pluginList || []);
         });
       } catch (error) {
@@ -752,7 +752,7 @@ const App: React.FC = () => {
     console.log('Registering event listeners');
 
     // Listener for file-opened event
-    window.electron.ipcRenderer.on('file-opened', (event, data) => {
+    window.electron.ipcRenderer.on('file-opened', (event: Electron.IpcRendererEvent, data: { filePath?: string, fileName?: string, content?: string, error?: string }) => {
       console.log('file-opened event received in wrapper:', data);
       handleFileOpened(event, data);
 
@@ -772,7 +772,7 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.on('file-saved', handleFileSaved);
 
     // Listener for folder-structure event
-    window.electron.ipcRenderer.on('folder-structure', (_event, data) => {
+    window.electron.ipcRenderer.on('folder-structure', (_event: Electron.IpcRendererEvent, data: { name?: string }) => {
       console.log('folder-structure event received:', data);
       if (data.name) {
         setSelectedFolder(data.name);
@@ -813,14 +813,17 @@ const App: React.FC = () => {
     loadPluginMenuItems('edit');
     loadPluginMenuItems('run');
 
+    // Log installed plugins for debugging
+    console.log('Currently installed plugins:', installedPlugins);
+
     return () => {
       window.electron.ipcRenderer.removeAllListeners('plugin-list');
       window.electron.ipcRenderer.removeAllListeners('menu-items-changed');
       window.electron.ipcRenderer.removeAllListeners('menu-action-result');
     };
-  }, [activeFile, currentContent]); // Add dependencies to ensure handler has access to latest state
+  }, [activeFile, currentContent, installedPlugins]); // Add dependencies to ensure handler has access to latest state
 
-  const handlePluginListUpdate = (_event: any, plugins: string[]) => {
+  const handlePluginListUpdate = (_event: Electron.IpcRendererEvent, plugins: string[]) => {
     console.log('Plugin list updated:', plugins);
     setInstalledPlugins(plugins || []);
 
@@ -833,7 +836,7 @@ const App: React.FC = () => {
     }, 500); // Đợi 500ms để đảm bảo plugin đã đăng ký menu items
   };
 
-  const handleMenuItemsChanged = (_event: any, menuItems: MenuItem[]) => {
+  const handleMenuItemsChanged = (_event: Electron.IpcRendererEvent, menuItems: MenuItem[]) => {
     console.log('Menu items changed:', menuItems);
     if (menuItems && menuItems.length > 0) {
       // Cập nhật trực tiếp danh sách menu items
@@ -857,7 +860,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleMenuActionResult = (_event: any, result: { success: boolean, message: string, data?: any }) => {
+  const handleMenuActionResult = (_event: Electron.IpcRendererEvent, result: { success: boolean, message: string, data?: { formattedText?: string, [key: string]: any } }) => {
     console.log('Menu action result:', result);
     if (result.success) {
       // Handle successful menu action
@@ -870,10 +873,10 @@ const App: React.FC = () => {
         setCurrentContent(result.data.formattedText);
 
         // If this is a saved file, update the original content to avoid showing it as modified
-        if (activeFile && !activeFile.startsWith('new-file-')) {
+        if (activeFile && !activeFile.startsWith('new-file-') && result.data && result.data.formattedText) {
           setOriginalContent(prev => ({
             ...prev,
-            [activeFile]: result.data.formattedText
+            [activeFile]: result.data!.formattedText as string
           }));
         }
       }
