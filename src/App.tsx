@@ -24,7 +24,7 @@ const App: React.FC = () => {
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [showRunMenu, setShowRunMenu] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  // State này được sử dụng trong handlePluginListUpdate và các hàm khác
+  // Vẫn giữ lại state này để sử dụng cho các plugin khác
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
   const [editorStats, setEditorStats] = useState({
@@ -870,13 +870,14 @@ const App: React.FC = () => {
       if (result.data && result.data.formattedText !== undefined) {
         console.log('Updating editor content with formatted text');
         // Update the editor content with the formatted text
-        setCurrentContent(result.data.formattedText);
+        const formattedText = result.data.formattedText;
+        setCurrentContent(formattedText);
 
         // If this is a saved file, update the original content to avoid showing it as modified
         if (activeFile && !activeFile.startsWith('new-file-') && result.data && result.data.formattedText) {
           setOriginalContent(prev => ({
             ...prev,
-            [activeFile]: result.data!.formattedText as string
+            [activeFile]: formattedText
           }));
         }
       }
