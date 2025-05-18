@@ -53,6 +53,12 @@ contextBridge.exposeInMainWorld('electron', {
             console.log(`Preload: Exporting to PDF, content length: ${content?.length || 0}`);
             ipcRenderer.send("export-to-pdf", content, filePath);
         },
+
+        // Terminal command execution
+        executeTerminalCommand: (command, workingDirectory) => {
+            console.log(`Preload: Executing terminal command: ${command}`);
+            ipcRenderer.send("execute-terminal-command", { command, workingDirectory });
+        },
     },
 
 });

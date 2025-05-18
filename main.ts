@@ -1381,6 +1381,70 @@ function sendResponse(id, success, message, data = null) {
         }
     });
 
+    // Thực thi lệnh từ terminal
+    ipcMain.on("execute-terminal-command", (event, data: { command: string, workingDirectory?: string }) => {
+        try {
+            console.log(`Executing terminal command: ${data.command}`);
+            console.log(`Working directory: ${data.workingDirectory || process.cwd()}`);
+
+            // Xác định shell và options
+            const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash';
+            const shellArgs = process.platform === 'win32' ? ['/c', data.command] : ['-c', data.command];
+
+            // Tạo process ID duy nhất
+            const processId = `terminal-command-${Date.now()}`;
+
+            // Tạo process để thực thi lệnh
+            const childProcess = spawn(shell, shellArgs, {
+                cwd: data.workingDirectory || process.cwd(),
+                shell: true
+            });
+
+            // Lưu trữ process để có thể dừng nó sau này
+            runningProcesses.set(processId, childProcess);
+
+            // Xử lý output
+            childProcess.stdout.on('data', (data) => {
+                const text = data.toString();
+                // Gửi kết quả trực tiếp đến renderer
+                event.reply("run-code-output", {
+                    type: 'stdout',
+                    text: text
+                });
+            });
+
+            // Xử lý lỗi
+            childProcess.stderr.on('data', (data) => {
+                const text = data.toString();
+                // Gửi lỗi trực tiếp đến renderer
+                event.reply("run-code-output", {
+                    type: 'stderr',
+                    text: text
+                });
+            });
+
+            // Xử lý khi process kết thúc
+            childProcess.on('close', (code) => {
+                console.log(`Terminal command exited with code ${code}`);
+                runningProcesses.delete(processId);
+
+                // Gửi kết quả cuối cùng
+                event.reply("run-code-result", {
+                    success: code === 0,
+                    message: code === 0 ? 'Command executed successfully' : `Command execution failed with exit code ${code}`,
+                    exitCode: code
+                });
+            });
+        } catch (error: any) {
+            console.error(`Error executing terminal command:`, error);
+            event.reply("run-code-result", {
+                success: false,
+                message: `Error: ${error.message || String(error)}`,
+                exitCode: 1
+            });
+        }
+    });
+
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         // Dừng Plugin Manager trước khi thoát
