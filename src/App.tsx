@@ -6,6 +6,7 @@ import Terminal from './components/Terminal';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
 import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText, Play, Square } from 'lucide-react';
 import { MenuItem } from './plugin/MenuContribution';
+import path from 'path';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('explorer');
@@ -25,7 +26,6 @@ const App: React.FC = () => {
   const [showRunMenu, setShowRunMenu] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   // Vẫn giữ lại state này để sử dụng cho các plugin khác
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
   const [editorStats, setEditorStats] = useState({
@@ -263,20 +263,9 @@ const App: React.FC = () => {
     closeAllMenus();
   };
 
-  // Hàm xử lý Run Code
+  // Hàm xử lý Run Code - Giờ chỉ hiển thị terminal và gợi ý người dùng nhập lệnh
   const handleRunCode = () => {
     if (activeFile) {
-      const extension = activeFile.split('.').pop()?.toLowerCase();
-
-      // Xử lý đặc biệt cho file C++
-      let language = extension;
-      if (extension === 'cpp' || extension === 'cc' || extension === 'cxx' || extension === 'c++') {
-        language = 'cpp';
-      }
-
-      // Thêm output vào terminal
-      setTerminalOutput(`$ Running ${activeFile}...\n[${new Date().toLocaleTimeString()}] Starting execution...\n[${new Date().toLocaleTimeString()}] Processing file: ${activeFile}\n`);
-
       // Hiển thị terminal nếu chưa hiển thị
       if (!showTerminal) {
         setShowTerminal(true);
@@ -285,41 +274,74 @@ const App: React.FC = () => {
       // Chuyển sang tab TERMINAL
       setActiveTerminalTab('TERMINAL');
 
-      // Đánh dấu đang chạy code
-      setIsRunning(true);
+      // Gợi ý lệnh dựa trên loại file
+      const extension = activeFile.split('.').pop()?.toLowerCase();
+      let suggestedCommand = '';
 
-      // Gọi hàm chạy code tương ứng với ngôn ngữ
-      console.log(`Sending file content for: ${activeFile}`);
-      console.log(`Menu items for file: ${JSON.stringify(pluginMenuItems.filter(item => item.parentMenu.toLowerCase() === 'file').map(item => item.label))}`);
-      console.log(`Menu items for edit: ${JSON.stringify(pluginMenuItems.filter(item => item.parentMenu.toLowerCase() === 'edit').map(item => item.label))}`);
-      console.log(`Running code in ${language} language, code length: ${currentContent?.length || 0}`);
+      switch (extension) {
+        case 'js':
+          suggestedCommand = `node "${activeFile}"`;
+          break;
+        case 'ts':
+          suggestedCommand = `npx ts-node "${activeFile}"`;
+          break;
+        case 'py':
+          suggestedCommand = `python "${activeFile}"`;
+          break;
+        case 'cpp':
+        case 'cc':
+        case 'cxx':
+        case 'c++':
+          suggestedCommand = `g++ "${activeFile}" -o "${activeFile.replace(/\.[^.]+$/, '.exe')}" && "${activeFile.replace(/\.[^.]+$/, '.exe')}"`;
+          break;
+        case 'html':
+          suggestedCommand = `start "${activeFile}"`;
+          break;
+        default:
+          suggestedCommand = `Type a command to run "${activeFile}"`;
+      }
 
-      // Lưu trạng thái để biết rằng chúng ta vừa chạy code
-      // Điều này sẽ được sử dụng để focus lại vào editor sau khi nhận kết quả
-      window.lastAction = 'run-code';
-
-      // Lưu lại editor element trước khi gửi yêu cầu chạy code
-      const editorElement = document.querySelector('.monaco-editor');
-
-      // Gửi yêu cầu chạy code
-      window.electron.ipcRenderer.send('run-code', {
-        code: currentContent,
-        fileName: activeFile,
-        language: language
+      // Thêm gợi ý vào terminal
+      setTerminalOutput(prev => {
+        if (prev) {
+          return prev + `\n\n$ Suggested command: ${suggestedCommand}`;
+        } else {
+          return `$ Terminal ready\n$ Suggested command: ${suggestedCommand}`;
+        }
       });
 
-      // Đặt timeout để focus lại vào editor sau khi terminal được hiển thị
+      // Đặt timeout để đảm bảo terminal được hiển thị trước khi focus vào nó
       setTimeout(() => {
-        if (editorElement) {
-          console.log('Focusing editor after run code request');
-          (editorElement as HTMLElement).click();
-          (editorElement as HTMLElement).focus();
+        // Tìm terminal element và focus vào nó
+        const terminalElement = document.querySelector('[tabindex="0"]');
+        if (terminalElement) {
+          console.log('Focusing terminal after F5 key press');
+          (terminalElement as HTMLElement).focus();
         }
-      }, 500);
+      }, 100);
     } else {
       alert('No file is currently open. Please open a file before running code.');
     }
     closeAllMenus();
+  };
+
+  // Hàm xử lý lệnh từ terminal
+  const handleExecuteCommand = (command: string) => {
+    // Hiển thị lệnh trong terminal với dòng mới
+    setTerminalOutput(prev => prev + `\n\n$ ${command}\n`);
+
+    // Đánh dấu đang chạy code
+    setIsRunning(true);
+
+    // Không cần focus lại vào editor sau khi chạy lệnh
+    // Bỏ dòng này để giữ focus ở terminal
+    // window.lastAction = 'run-code';
+
+    // Gửi lệnh đến main process để thực thi
+    window.electron.ipcRenderer.send('execute-terminal-command', {
+      command,
+      workingDirectory: selectedFolder || (activeFile ? path.dirname(activeFile) : undefined)
+    });
   };
 
   // Hàm xử lý Stop Execution
@@ -437,21 +459,10 @@ const App: React.FC = () => {
         e.preventDefault();
         handleExportToPdf();
       }
-      // F5 để chạy code
+      // F5 để mở terminal và gợi ý lệnh chạy code
       if (e.key === 'F5') {
         e.preventDefault();
         handleRunCode();
-
-        // Đặt timeout để focus lại vào editor sau khi chạy code
-        setTimeout(() => {
-          // Tìm editor và focus vào nó
-          const editorElement = document.querySelector('.monaco-editor');
-          if (editorElement) {
-            console.log('Focusing editor after F5 key press');
-            (editorElement as HTMLElement).click();
-            (editorElement as HTMLElement).focus();
-          }
-        }, 300);
       }
       // Shift+F5 để dừng chạy code
       if (e.shiftKey && e.key === 'F5') {
@@ -553,22 +564,7 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Hàm để focus lại vào editor
-  const focusEditorAfterAction = () => {
-    // Đặt timeout để đảm bảo UI đã cập nhật
-    setTimeout(() => {
-      // Tìm editor và focus vào nó
-      const editorElement = document.querySelector('.monaco-editor');
-      if (editorElement) {
-        console.log('Focusing editor after action');
-        // Click trước để đảm bảo editor nhận được focus
-        (editorElement as HTMLElement).click();
-        (editorElement as HTMLElement).focus();
-        // Xóa trạng thái lastAction
-        window.lastAction = '';
-      }
-    }, 200);
-  };
+  // Không cần hàm focus lại vào editor nữa vì chúng ta muốn giữ focus ở terminal
 
   // Lắng nghe kết quả chạy code
   useEffect(() => {
@@ -579,6 +575,7 @@ const App: React.FC = () => {
 
     const handleRunCodeOutput = (_event: any, data: { type: string, text: string }) => {
       console.log(`Run code output (${data.type}):`, data.text);
+      // Đảm bảo output hiển thị trên dòng mới
       setTerminalOutput(prev => prev + data.text);
     };
 
@@ -586,21 +583,20 @@ const App: React.FC = () => {
       console.log('Run code result:', result);
       setIsRunning(false);
 
-      // Thêm thông báo kết thúc
-      setTerminalOutput(prev => prev + `\n\n--- ${result.success ? 'SUCCESS' : 'ERROR'} ---\n${result.message}\n`);
+      // Thêm thông báo kết thúc trên dòng mới
+      setTerminalOutput(prev => prev + `\n--- ${result.success ? 'SUCCESS' : 'ERROR'} ---\n${result.message}\n`);
 
-      // Focus lại vào editor sau khi nhận kết quả chạy code
-      if (window.lastAction === 'run-code' || window.lastAction === 'stop-execution') {
-        // Đặt timeout để đảm bảo UI đã cập nhật
-        setTimeout(() => {
-          focusEditorAfterAction();
+      // Không focus lại vào editor sau khi nhận kết quả chạy code
+      // Bỏ hoàn toàn việc focus lại vào editor để giữ focus ở terminal
 
-          // Thêm một lần nữa sau 500ms để đảm bảo editor được focus
-          setTimeout(() => {
-            focusEditorAfterAction();
-          }, 500);
-        }, 200);
-      }
+      // Đảm bảo terminal vẫn giữ focus sau khi nhận kết quả
+      setTimeout(() => {
+        const terminalElement = document.querySelector('[tabindex="0"]');
+        if (terminalElement) {
+          console.log('Refocusing terminal after command execution');
+          (terminalElement as HTMLElement).focus();
+        }
+      }, 50);
     };
 
     const handleStopExecutionResult = (_event: any, result: any) => {
@@ -608,29 +604,19 @@ const App: React.FC = () => {
       setIsRunning(false);
 
       // Thêm thông báo dừng chạy
-      setTerminalOutput(prev => prev + `\n\n--- STOPPED ---\n${result.message}\n`);
+      setTerminalOutput(prev => prev + `\n--- STOPPED ---\n${result.message}\n`);
 
-      // Focus lại vào editor sau khi dừng chạy code
-      // Đặt timeout để đảm bảo UI đã cập nhật
+      // Không focus lại vào editor sau khi dừng chạy code
+      // Giữ focus ở terminal
+
+      // Đảm bảo terminal vẫn giữ focus sau khi dừng thực thi
       setTimeout(() => {
-        focusEditorAfterAction();
-
-        // Thêm một lần nữa sau 500ms để đảm bảo editor được focus
-        setTimeout(() => {
-          focusEditorAfterAction();
-
-          // Thêm một lần nữa sau 1000ms để đảm bảo editor được focus
-          setTimeout(() => {
-            // Tìm editor và focus vào nó
-            const editorElement = document.querySelector('.monaco-editor');
-            if (editorElement) {
-              console.log('Final attempt to focus editor after stop execution');
-              (editorElement as HTMLElement).click();
-              (editorElement as HTMLElement).focus();
-            }
-          }, 1000);
-        }, 500);
-      }, 200);
+        const terminalElement = document.querySelector('[tabindex="0"]');
+        if (terminalElement) {
+          console.log('Refocusing terminal after stopping execution');
+          (terminalElement as HTMLElement).focus();
+        }
+      }, 50);
     };
 
     // Đăng ký các listener
@@ -1279,6 +1265,7 @@ const App: React.FC = () => {
                     terminalOutput={terminalOutput}
                     onTabClick={handleTerminalTabClick}
                     onClose={toggleTerminal}
+                    onExecuteCommand={handleExecuteCommand}
                   />
                 </div>
               )}
