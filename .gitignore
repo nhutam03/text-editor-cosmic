@@ -24,3 +24,12 @@ dist-ssr
 *.sw?
 .env
 .env.local
+
+# Build and release directories
+build-fresh/
+release-new/
+release/
+out/
+
+# Local configuration files
+firebase-config.js
