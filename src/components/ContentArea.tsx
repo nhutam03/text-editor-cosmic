@@ -82,6 +82,11 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   const [newName, setNewName] = useState<string>(""); // Tên mới khi đổi tên
   const [searchQuery, setSearchQuery] = useState<string>(""); // Tìm kiếm trong explorer
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const [showFolderMenu, setShowFolderMenu] = useState<boolean>(false);
+  const folderMenuRef = useRef<HTMLDivElement>(null);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+
   const renderContent = () => {
     switch (activeTab) {
       case "explorer":
@@ -91,7 +96,9 @@ const ContentArea: React.FC<ContentAreaProps> = ({
               <div className="flex items-center space-x-2">
                 <RefreshCw
                   size={14}
-                  className="text-gray-400 hover:text-white cursor-pointer"
+                  className={`text-gray-400 hover:text-white cursor-pointer ${
+                    isRefreshing ? "animate-spin text-blue-400" : ""
+                  }`}
                   onClick={refreshFolderStructure}
                   title="Refresh"
                 />
@@ -101,14 +108,46 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                   onClick={() => handleCreateNewFile()}
                   title="New File"
                 />
-                <FolderPlus
-                  size={14}
-                  className="text-gray-400 hover:text-white cursor-pointer"
-                  onClick={
-                    selectedFolder ? () => handleCreateNewFolder() : openFolder
-                  }
-                  title={selectedFolder ? "New Folder" : "Open Folder"}
-                />
+                <div className="relative" ref={folderMenuRef}>
+                  <FolderPlus
+                    size={14}
+                    className="text-gray-400 hover:text-white cursor-pointer"
+                    onClick={toggleFolderMenu}
+                    title="Folder Options"
+                  />
+                  {showFolderMenu && (
+                    <div className="absolute top-full left-0 bg-[#252526] shadow-lg z-50 w-48 border border-[#3c3c3c] rounded mt-1">
+                      <div className="p-1">
+                        <div
+                          className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                          onClick={() => {
+                            handleCreateNewFolder();
+                            setShowFolderMenu(false);
+                          }}
+                        >
+                          <FolderPlus
+                            size={16}
+                            className="mr-2 text-yellow-400"
+                          />
+                          <span className="text-sm">New Folder</span>
+                        </div>
+                        <div
+                          className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
+                          onClick={() => {
+                            openFolder();
+                            setShowFolderMenu(false);
+                          }}
+                        >
+                          <FolderOpen
+                            size={16}
+                            className="mr-2 text-blue-400"
+                          />
+                          <span className="text-sm">Open Folder</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <MoreHorizontal
                   size={14}
                   className="text-gray-400 hover:text-white cursor-pointer"
@@ -172,18 +211,22 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                         }}
                         title="New File"
                       />
-                      <FolderPlus
-                        size={14}
-                        className="text-gray-400 hover:text-white"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCreateNewFolder();
-                        }}
-                        title="New Folder"
-                      />
+                      <div className="relative">
+                        <FolderPlus
+                          size={14}
+                          className="text-gray-400 hover:text-white"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCreateNewFolder();
+                          }}
+                          title="New Folder"
+                        />
+                      </div>
                       <RefreshCw
                         size={14}
-                        className="text-gray-400 hover:text-white"
+                        className={`text-gray-400 hover:text-white ${
+                          isRefreshing ? "animate-spin text-blue-400" : ""
+                        }`}
                         onClick={(e) => {
                           e.stopPropagation();
                           refreshFolderStructure();
@@ -650,15 +693,103 @@ const ContentArea: React.FC<ContentAreaProps> = ({
 
   // Hàm tạo thư mục mới
   const handleCreateNewFolder = (parentPath: string = selectedFolder || "") => {
-    const newFolderName = "new-folder";
-    window.electron.ipcRenderer.send(
-      "create-new-folder-request",
-      `${parentPath}/${newFolderName}`
-    );
-    // Sau khi tạo thư mục, cập nhật lại cấu trúc thư mục
-    window.electron.ipcRenderer.once("new-folder-created", () => {
-      refreshFolderStructure();
-    });
+    if (!selectedFolder) {
+      // Nếu chưa có folder được mở, mở dialog chọn folder trước
+      window.electron.ipcRenderer.send("open-folder-request");
+      window.electron.ipcRenderer.once("folder-structure", () => {
+        // Sau khi folder được chọn, hiển thị input để nhập tên thư mục
+        promptForFolderName();
+      });
+    } else {
+      // Nếu đã có folder được mở, hiển thị input để nhập tên thư mục
+      promptForFolderName(parentPath);
+    }
+  };
+
+  // Hàm hiển thị input để nhập tên thư mục
+  const promptForFolderName = (parentPath: string = selectedFolder || "") => {
+    // Tìm phần tử cha để đặt input vào đúng vị trí
+    const folderElement =
+      document.querySelector(".folder-structure-root") ||
+      document.querySelector(".overflow-y-auto");
+
+    if (!folderElement) {
+      console.error("Could not find parent element for folder input");
+      return;
+    }
+
+    // Tạo container để định vị input
+    const inputContainer = document.createElement("div");
+    inputContainer.className = "pl-4 py-1";
+
+    // Tạo input element để nhập tên thư mục
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className =
+      "w-full p-1 bg-gray-700 text-white border border-yellow-500 text-sm rounded";
+    input.placeholder = "Enter folder name...";
+
+    // Thêm input vào container
+    inputContainer.appendChild(input);
+
+    // Thêm container vào DOM
+    folderElement.appendChild(inputContainer);
+    input.focus();
+
+    // Xử lý khi nhấn Enter
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const folderName = input.value.trim();
+
+        if (!folderName) {
+          // Hiển thị thông báo lỗi nếu tên thư mục rỗng
+          setRefreshMessage("Folder name cannot be empty");
+          setTimeout(() => {
+            setRefreshMessage(null);
+          }, 3000);
+          return;
+        }
+
+        console.log("Creating new folder:", `${parentPath}/${folderName}`);
+
+        // Tạo thư mục mới với tên đã nhập
+        window.electron.ipcRenderer.send(
+          "create-new-folder-request",
+          `${parentPath}/${folderName}`
+        );
+
+        // Xóa input
+        folderElement.removeChild(inputContainer);
+
+        // Hủy các event listener
+        input.removeEventListener("keydown", handleKeyDown);
+        document.removeEventListener("click", handleClickOutside);
+      } else if (e.key === "Escape") {
+        // Xóa input khi nhấn Escape
+        folderElement.removeChild(inputContainer);
+
+        // Hủy các event listener
+        input.removeEventListener("keydown", handleKeyDown);
+        document.removeEventListener("click", handleClickOutside);
+      }
+    };
+
+    input.addEventListener("keydown", handleKeyDown);
+
+    // Xử lý khi click ra ngoài
+    const handleClickOutside = (e: MouseEvent) => {
+      if (e.target !== input && !input.contains(e.target as Node)) {
+        folderElement.removeChild(inputContainer);
+        document.removeEventListener("click", handleClickOutside);
+        input.removeEventListener("keydown", handleKeyDown);
+      }
+    };
+
+    // Đợi một chút trước khi đăng ký sự kiện click để tránh trigger ngay lập tức
+    setTimeout(() => {
+      document.addEventListener("click", handleClickOutside);
+    }, 100);
   };
 
   // Hàm xóa file/thư mục
@@ -1378,6 +1509,69 @@ const ContentArea: React.FC<ContentAreaProps> = ({
       window.electron.ipcRenderer.removeAllListeners("plugin-applied");
     };
   }, [activeTab]);
+
+  useEffect(() => {
+    // Lắng nghe sự kiện new-folder-created để cập nhật UI
+    window.electron.ipcRenderer.on("new-folder-created", (event, result) => {
+      console.log("New folder created:", result);
+
+      if (result.success) {
+        // Đặt trạng thái đang làm mới
+        setIsRefreshing(true);
+
+        // Gửi yêu cầu làm mới đến main process
+        window.electron.ipcRenderer.send(
+          "refresh-folder-structure",
+          selectedFolder
+        );
+
+        // Đặt timeout để dừng hiệu ứng loading sau 1 giây
+        setTimeout(() => {
+          setIsRefreshing(false);
+          setRefreshMessage("Folder created successfully");
+
+          // Tự động ẩn thông báo sau 2 giây
+          setTimeout(() => {
+            setRefreshMessage(null);
+          }, 2000);
+        }, 1000);
+      } else {
+        setRefreshMessage(
+          `Failed to create folder: ${result.error || "Unknown error"}`
+        );
+
+        // Tự động ẩn thông báo sau 3 giây
+        setTimeout(() => {
+          setRefreshMessage(null);
+        }, 3000);
+      }
+    });
+
+    return () => {
+      window.electron.ipcRenderer.removeAllListeners("new-folder-created");
+    };
+  }, [selectedFolder]);
+
+  const toggleFolderMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFolderMenu(!showFolderMenu);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        folderMenuRef.current &&
+        !folderMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowFolderMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   return (
     <div
