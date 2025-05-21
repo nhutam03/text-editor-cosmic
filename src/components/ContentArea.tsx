@@ -108,46 +108,12 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                   onClick={() => handleCreateNewFile()}
                   title="New File"
                 />
-                <div className="relative" ref={folderMenuRef}>
-                  <FolderPlus
-                    size={14}
-                    className="text-gray-400 hover:text-white cursor-pointer"
-                    onClick={toggleFolderMenu}
-                    title="Folder Options"
-                  />
-                  {showFolderMenu && (
-                    <div className="absolute top-full left-0 bg-[#252526] shadow-lg z-50 w-48 border border-[#3c3c3c] rounded mt-1">
-                      <div className="p-1">
-                        <div
-                          className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
-                          onClick={() => {
-                            handleCreateNewFolder();
-                            setShowFolderMenu(false);
-                          }}
-                        >
-                          <FolderPlus
-                            size={16}
-                            className="mr-2 text-yellow-400"
-                          />
-                          <span className="text-sm">New Folder</span>
-                        </div>
-                        <div
-                          className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer"
-                          onClick={() => {
-                            openFolder();
-                            setShowFolderMenu(false);
-                          }}
-                        >
-                          <FolderOpen
-                            size={16}
-                            className="mr-2 text-blue-400"
-                          />
-                          <span className="text-sm">Open Folder</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <FolderPlus
+                  size={14}
+                  className="text-gray-400 hover:text-white cursor-pointer"
+                  onClick={() => handleCreateNewFolder()}
+                  title="New Folder"
+                />
                 <MoreHorizontal
                   size={14}
                   className="text-gray-400 hover:text-white cursor-pointer"
@@ -1619,7 +1585,13 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                     closeContextMenu();
                   }}
                 >
-                  <FolderPlus size={16} className="mr-2 text-yellow-400" />
+                  <FolderPlus
+                    size={16}
+                    className="mr-2 text-yellow-400"
+                    onClick={() =>
+                      handleCreateNewFolder(contextMenuTarget.path)
+                    }
+                  />
                   <span>New Folder</span>
                 </div>
                 <ContextMenuSeparator />
