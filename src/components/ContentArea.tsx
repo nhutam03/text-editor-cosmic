@@ -512,7 +512,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   };
 
   const toggleRootFolder = () => {
-    setShowChildren((prev) => !prev);
+    setShowChildren(!showChildren);
   };
 
   // Hàm lấy biểu tượng cho từng loại file
