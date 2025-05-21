@@ -51,10 +51,10 @@ const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
       });
 
       // Đăng ký listener để nhận kết quả
-      window.electron.ipcRenderer.once('plugin-executed', (event, result) => {
+      window.electron.ipcRenderer.once('plugin-executed', (_event: Electron.IpcRendererEvent, result: { success: boolean, data?: { result: string }, message?: string }) => {
         if (result.success) {
           // Thêm phản hồi từ AI vào danh sách tin nhắn
-          setMessages(prev => [...prev, { role: 'assistant', content: result.data.result }]);
+          setMessages(prev => [...prev, { role: 'assistant', content: result.data?.result || 'Không có kết quả' }]);
         } else {
           // Hiển thị thông báo lỗi
           setMessages(prev => [...prev, { role: 'assistant', content: `Lỗi: ${result.message}` }]);
