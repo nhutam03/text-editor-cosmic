@@ -86,6 +86,9 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   const folderMenuRef = useRef<HTMLDivElement>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<
+    Array<{ filePath: string; line: number; preview: string }>
+  >([]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -228,14 +231,42 @@ const ContentArea: React.FC<ContentAreaProps> = ({
         );
       case "search":
         return (
-          <div className="p-2">
-            <div className="flex flex-col items-center justify-between">
-              <span className="text-white">Search</span>
+          <div className="p-2 h-full flex flex-col">
+            <div className="flex items-center mb-2">
+              <Search className="h-4 w-4 mr-2 text-gray-400" />
               <input
                 type="text"
                 className="w-full p-2 bg-gray-800 text-white rounded-md"
-                placeholder="Search..."
+                placeholder="Search in files..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && handleSearchInFiles(searchQuery)
+                }
               />
+              {searchQuery && (
+                <X
+                  size={14}
+                  className="ml-2 text-gray-400 hover:text-white cursor-pointer"
+                  onClick={() => setSearchQuery("")}
+                />
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {searchResults.map((result, index) => (
+                <div
+                  key={index}
+                  className="p-2 hover:bg-gray-700 cursor-pointer"
+                  onClick={() =>
+                    handleSearchResultClick(result.filePath, result.line)
+                  }
+                >
+                  <div className="text-sm text-blue-400">{result.filePath}</div>
+                  <div className="text-xs text-gray-300">
+                    Line {result.line}: {result.preview}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         );
