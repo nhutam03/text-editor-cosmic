@@ -972,9 +972,13 @@ const ContentArea: React.FC<ContentAreaProps> = ({
     if (selectedFolder) {
       console.log("Refreshing folder structure for:", selectedFolder);
 
+      // Bắt đầu hiệu ứng xoay
+      setIsRefreshing(true);
+
       // Kiểm tra xem selectedFolder có phải là đường dẫn đầy đủ không
       if (!selectedFolder.includes("\\") && !selectedFolder.includes("/")) {
         console.error("Selected folder is not a full path:", selectedFolder);
+        setIsRefreshing(false);
         return;
       }
 
@@ -984,6 +988,11 @@ const ContentArea: React.FC<ContentAreaProps> = ({
       // Gửi yêu cầu làm mới với thư mục gốc để giữ nguyên cấu trúc
       window.electron.ipcRenderer.send("refresh-folder-structure", rootFolder);
       console.log("Refreshing from root folder:", rootFolder);
+
+      // Dừng hiệu ứng xoay sau 3 giây
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 1000);
     }
   };
 
