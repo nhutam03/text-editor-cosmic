@@ -973,26 +973,17 @@ const ContentArea: React.FC<ContentAreaProps> = ({
       console.log("Refreshing folder structure for:", selectedFolder);
 
       // Kiểm tra xem selectedFolder có phải là đường dẫn đầy đủ không
-      // Nếu chỉ là tên thư mục, không làm mới mà chỉ log lỗi
       if (!selectedFolder.includes("\\") && !selectedFolder.includes("/")) {
         console.error("Selected folder is not a full path:", selectedFolder);
         return;
       }
 
-      // Thêm xử lý lỗi khi thư mục không tồn tại
-      window.electron.ipcRenderer.send(
-        "refresh-folder-structure",
-        selectedFolder
-      );
-      window.electron.ipcRenderer.once(
-        "folder-structure-error",
-        (event, error) => {
-          console.error("Error refreshing folder structure:", error);
-          // Chỉ log lỗi, không mở hộp thoại chọn thư mục
-        }
-      );
-    } else {
-      console.error("No folder selected");
+      // Lấy thư mục gốc (thư mục cha đầu tiên đã mở)
+      const rootFolder = folderStructure?.path || selectedFolder;
+
+      // Gửi yêu cầu làm mới với thư mục gốc để giữ nguyên cấu trúc
+      window.electron.ipcRenderer.send("refresh-folder-structure", rootFolder);
+      console.log("Refreshing from root folder:", rootFolder);
     }
   };
 
