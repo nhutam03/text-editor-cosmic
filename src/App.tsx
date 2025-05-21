@@ -3,6 +3,7 @@ import Editor from './components/Editor';
 import Sidebar from './components/Sidebar';
 import ContentArea from './components/ContentArea';
 import Terminal from './components/Terminal';
+import AIChat from './components/AIChat';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
 import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText, Play, Square } from 'lucide-react';
 import { MenuItem } from './plugin/MenuContribution';
@@ -25,6 +26,7 @@ const App: React.FC = () => {
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [showRunMenu, setShowRunMenu] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
   // Vẫn giữ lại state này để sử dụng cho các plugin khác
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
@@ -310,15 +312,8 @@ const App: React.FC = () => {
         }
       });
 
-      // Đặt timeout để đảm bảo terminal được hiển thị trước khi focus vào nó
-      setTimeout(() => {
-        // Tìm terminal element và focus vào nó
-        const terminalElement = document.querySelector('[tabindex="0"]');
-        if (terminalElement) {
-          console.log('Focusing terminal after F5 key press');
-          (terminalElement as HTMLElement).focus();
-        }
-      }, 100);
+      // Không tự động focus vào terminal
+      // Để người dùng tự do điều khiển focus
     } else {
       alert('No file is currently open. Please open a file before running code.');
     }
@@ -354,19 +349,21 @@ const App: React.FC = () => {
       // Lưu trạng thái để biết rằng chúng ta vừa dừng chạy code
       window.lastAction = 'stop-execution';
 
-      // Lưu lại editor element trước khi gửi yêu cầu dừng chạy code
-      const editorElement = document.querySelector('.monaco-editor');
-
-      // Đặt timeout để focus lại vào editor sau khi terminal được cập nhật
-      setTimeout(() => {
-        if (editorElement) {
-          console.log('Focusing editor after stop execution request');
-          (editorElement as HTMLElement).click();
-          (editorElement as HTMLElement).focus();
-        }
-      }, 500);
+      // Không tự động focus vào editor
+      // Để người dùng tự do điều khiển focus
     }
     closeAllMenus();
+  };
+
+  // Hàm xử lý hiển thị AI Chat
+  const handleShowAIChat = () => {
+    setShowAIChat(true);
+    closeAllMenus();
+  };
+
+  // Hàm xử lý đóng AI Chat
+  const handleCloseAIChat = () => {
+    setShowAIChat(false);
   };
 
   const handleCloseFile = (fileName: string) => {
@@ -459,6 +456,11 @@ const App: React.FC = () => {
         e.preventDefault();
         handleExportToPdf();
       }
+      // Alt+A để mở AI Chat
+      if (e.altKey && e.key === 'a') {
+        e.preventDefault();
+        handleShowAIChat();
+      }
       // F5 để mở terminal và gợi ý lệnh chạy code
       if (e.key === 'F5') {
         e.preventDefault();
@@ -469,16 +471,8 @@ const App: React.FC = () => {
         e.preventDefault();
         handleStopExecution();
 
-        // Đặt timeout để focus lại vào editor sau khi dừng chạy code
-        setTimeout(() => {
-          // Tìm editor và focus vào nó
-          const editorElement = document.querySelector('.monaco-editor');
-          if (editorElement) {
-            console.log('Focusing editor after Shift+F5 key press');
-            (editorElement as HTMLElement).click();
-            (editorElement as HTMLElement).focus();
-          }
-        }, 300);
+        // Không tự động focus vào editor
+        // Để người dùng tự do điều khiển focus
       }
       // Shift+Alt+F để định dạng mã với Prettier
       if (e.shiftKey && e.altKey && e.key === 'F') {
@@ -586,17 +580,8 @@ const App: React.FC = () => {
       // Thêm thông báo kết thúc trên dòng mới
       setTerminalOutput(prev => prev + `\n--- ${result.success ? 'SUCCESS' : 'ERROR'} ---\n${result.message}\n`);
 
-      // Không focus lại vào editor sau khi nhận kết quả chạy code
-      // Bỏ hoàn toàn việc focus lại vào editor để giữ focus ở terminal
-
-      // Đảm bảo terminal vẫn giữ focus sau khi nhận kết quả
-      setTimeout(() => {
-        const terminalElement = document.querySelector('[tabindex="0"]');
-        if (terminalElement) {
-          console.log('Refocusing terminal after command execution');
-          (terminalElement as HTMLElement).focus();
-        }
-      }, 50);
+      // Không tự động focus vào terminal hoặc editor
+      // Để người dùng tự do điều khiển focus
     };
 
     const handleStopExecutionResult = (_event: any, result: any) => {
@@ -606,17 +591,8 @@ const App: React.FC = () => {
       // Thêm thông báo dừng chạy
       setTerminalOutput(prev => prev + `\n--- STOPPED ---\n${result.message}\n`);
 
-      // Không focus lại vào editor sau khi dừng chạy code
-      // Giữ focus ở terminal
-
-      // Đảm bảo terminal vẫn giữ focus sau khi dừng thực thi
-      setTimeout(() => {
-        const terminalElement = document.querySelector('[tabindex="0"]');
-        if (terminalElement) {
-          console.log('Refocusing terminal after stopping execution');
-          (terminalElement as HTMLElement).focus();
-        }
-      }, 50);
+      // Không tự động focus vào terminal hoặc editor
+      // Để người dùng tự do điều khiển focus
     };
 
     // Đăng ký các listener
@@ -1056,6 +1032,7 @@ const App: React.FC = () => {
                     onClick={toggleTerminal}
                   >
                     <span>Toggle Terminal</span>
+                    <span className="ml-auto text-xs text-gray-400">Ctrl+Shift+`</span>
                   </div>
                   <div
                     className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
@@ -1065,6 +1042,13 @@ const App: React.FC = () => {
                     }}
                   >
                     <span>Toggle Explorer</span>
+                  </div>
+                  <div
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
+                    onClick={handleShowAIChat}
+                  >
+                    <span>AI Chat</span>
+                    <span className="ml-auto text-xs text-gray-400">Alt+A</span>
                   </div>
                 </div>
               </div>
@@ -1275,6 +1259,9 @@ const App: React.FC = () => {
       </div>
 
       {/* Terminal đã được di chuyển vào bên trong editor */}
+
+      {/* AI Chat */}
+      {showAIChat && <AIChat onClose={handleCloseAIChat} />}
 
       {/* Status Bar */}
       <div className="flex items-center justify-between bg-[#007acc] text-white text-xs h-[22px] px-2">
