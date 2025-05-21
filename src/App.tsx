@@ -198,8 +198,8 @@ const App: React.FC = () => {
 
   // Function to open a folder
   const handleOpenFolder = () => {
-    console.log("Sending open-folder-dialog event");
-    window.electron.ipcRenderer.send("open-folder-dialog");
+    console.log("Sending open-folder-request event");
+    window.electron.ipcRenderer.send("open-folder-request");
     closeAllMenus();
   };
 
