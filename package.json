@@ -2,6 +2,11 @@
   "name": "text-editor-app",
   "private": true,
   "version": "0.0.0",
+  "description": "Cosmic Text Editor - A modern code editor with plugin support",
+  "author": {
+    "name": "Như Tâm",
+    "email": "nhutam050@gmail.com"
+  },
   "main": "dist/main.js",
   "scripts": {
     "dev": "vite",
@@ -15,20 +20,48 @@
     "dev-full": "npm run rebuild && npm run electron-dev"
   },
   "build": {
-    "appId": "com.texteditor.app",
-    "productName": "TextEditor",
+    "appId": "com.cosmic.texteditor",
+    "productName": "Cosmic Text Editor",
     "files": [
-      "dist/**/*"
+      "dist/**/*",
+      "preload.js"
     ],
+    "directories": {
+      "buildResources": "resources",
+      "output": "release"
+    },
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
     },
     "win": {
-      "target": "nsis"
+      "target": [
+        "nsis"
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cosmic Text Editor",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico"
     },
     "linux": {
-      "target": "AppImage"
-    }
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    },
+    "extraResources": [
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ]
   },
   "dependencies": {
     "@anvilco/anvil": "^3.3.2",
@@ -42,6 +75,8 @@
     "clsx": "^2.1.1",
     "dictionary-en": "^4.0.0",
     "dotenv": "^16.5.0",
+    "electron-log": "^5.1.1",
+    "electron-updater": "^6.2.1",
     "extract-zip": "^2.0.1",
     "firebase": "^11.6.0",
     "framer-motion": "^12.4.7",
