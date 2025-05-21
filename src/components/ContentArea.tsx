@@ -133,15 +133,20 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                   <input
                     type="text"
                     placeholder="Search"
-                    className="bg-[#3c3c3c] text-white text-xs pl-8 pr-2 py-1 rounded w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="explorer bg-[#3c3c3c] text-white text-xs pl-8 pr-2 py-1 rounded w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
                   />
                   {searchQuery && (
                     <X
                       size={14}
                       className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer"
-                      onClick={() => setSearchQuery("")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSearchQuery("");
+                      }}
                     />
                   )}
                 </div>
