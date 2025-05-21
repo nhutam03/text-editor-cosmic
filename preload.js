@@ -59,6 +59,12 @@ contextBridge.exposeInMainWorld('electron', {
             console.log(`Preload: Executing terminal command: ${command}`);
             ipcRenderer.send("execute-terminal-command", { command, workingDirectory });
         },
+
+        // Execute plugin directly
+        executePlugin: (pluginName, content, options) => {
+            console.log(`Preload: Executing plugin ${pluginName}`);
+            ipcRenderer.send("execute-plugin", { pluginName, content, options });
+        },
     },
 
 });

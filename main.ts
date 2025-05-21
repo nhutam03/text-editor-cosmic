@@ -4,14 +4,18 @@ import path from 'path';
 import fs from 'fs';
 import { OpenDialogReturnValue } from 'electron';
 import { PluginManager } from './src/plugin/PluginManager';
-import dotenv from 'dotenv';
+import { MenuItem } from './src/plugin/MenuContribution';
+import { loadEnvVariables } from './src/utils/env-loader';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables from .env file
+// This handles both development and production environments
+loadEnvVariables();
 
 let selectedFolder: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 let pluginManager: PluginManager;
+
+
 
 // Map để lưu trữ các process đang chạy
 const runningProcesses = new Map<string, ChildProcess>();
@@ -21,7 +25,7 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
-        icon: path.join(__dirname, '../public/logo.ico'),
+        icon: path.join(__dirname, '../resources/icon.ico'),
         autoHideMenuBar: true, // Ẩn thanh menu mặc định
         webPreferences: {
             nodeIntegration: false, // Tắt nodeIntegration
@@ -68,6 +72,8 @@ async function initializePluginManager() {
     // Khởi động Plugin Manager
     await pluginManager.start();
 }
+
+
 
 app.whenReady().then(async () => {
     // Tạo cửa sổ chính trước
@@ -710,46 +716,107 @@ function sendResponse(id, success, message, data = null) {
         };
     });
 
-    // Gỡ cài đặt plugin - Đơn giản hóa tối đa
+    // Gỡ cài đặt plugin - Cải tiến với xử lý lỗi tốt hơn
     ipcMain.handle("uninstall-plugin", async (event, pluginName: string): Promise<{ success: boolean; message?: string }> => {
+        if (!pluginName) {
+            console.error(`Main process: Invalid plugin name for uninstallation: ${pluginName}`);
+            return {
+                success: true, // Vẫn trả về true để tránh màn hình trắng
+                message: `Invalid plugin name provided`
+            };
+        }
+
         console.log(`Main process: Uninstalling plugin ${pluginName}`);
 
-        // Gọi uninstallPlugin và bắt lỗi
+        // Lưu trữ danh sách plugin trước khi gỡ cài đặt để so sánh sau
+        let pluginsBefore: any[] = [];
         try {
+            pluginsBefore = pluginManager.getPlugins();
+            console.log(`Main process: Plugins before uninstallation: ${pluginsBefore.map(p => p.name).join(', ')}`);
+        } catch (listError) {
+            console.error(`Main process: Error getting plugin list before uninstallation:`, listError);
+        }
+
+        // Gọi uninstallPlugin với xử lý lỗi cải tiến
+        try {
+            console.log(`Main process: Calling pluginManager.uninstallPlugin for ${pluginName}`);
             await pluginManager.uninstallPlugin(pluginName);
+            console.log(`Main process: Successfully called uninstallPlugin for ${pluginName}`);
         } catch (error) {
             console.error(`Main process: Error in uninstallPlugin:`, error);
             // Không ném lỗi, chỉ ghi log
         }
 
-        // Gửi danh sách plugin mới cho renderer
+        // Đợi một chút để đảm bảo quá trình gỡ cài đặt hoàn tất
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Gửi danh sách plugin mới cho renderer - với xử lý lỗi cải tiến
         try {
+            console.log(`Main process: Getting updated plugin list after uninstallation`);
             const plugins = pluginManager.getPlugins();
+            console.log(`Main process: Plugins after uninstallation: ${plugins.map(p => p.name).join(', ')}`);
+
+            // Kiểm tra xem plugin đã thực sự bị xóa chưa
+            const pluginStillExists = plugins.some(p =>
+                p.name === pluginName ||
+                p.name === pluginName.replace(/(-\d+\.\d+\.\d+)$/, '')
+            );
+
+            if (pluginStillExists) {
+                console.warn(`Main process: Plugin ${pluginName} still exists after uninstallation attempt`);
+            } else {
+                console.log(`Main process: Plugin ${pluginName} successfully removed from plugin list`);
+            }
+
+            // Gửi danh sách plugin mới cho renderer
+            console.log(`Main process: Sending updated plugin list to renderer`);
             event.sender.send('plugin-list', plugins.map(p => p.name));
 
-            // Gửi danh sách menu items mới cho renderer
+            // Gửi danh sách menu items mới cho renderer - với xử lý lỗi cải tiến
             setTimeout(() => {
                 try {
-                    // Lấy danh sách menu items cho các menu cha
-                    const fileMenuItems = pluginManager.getMenuItemsForParent('file');
-                    const editMenuItems = pluginManager.getMenuItemsForParent('edit');
-                    const runMenuItems = pluginManager.getMenuItemsForParent('run');
+                    console.log(`Main process: Getting updated menu items after plugin uninstallation`);
 
-                    console.log(`Main process: Sending updated menu items after plugin uninstallation`);
-                    console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`);
+                    // Lấy danh sách menu items cho các menu cha - với xử lý lỗi
+                    let fileMenuItems: MenuItem[] = [];
+                    let editMenuItems: MenuItem[] = [];
+                    let runMenuItems: MenuItem[] = [];
+
+                    try {
+                        fileMenuItems = pluginManager.getMenuItemsForParent('file') || [];
+                        console.log(`Main process: File menu items: ${fileMenuItems.length}`);
+                    } catch (fileMenuError) {
+                        console.error(`Main process: Error getting file menu items:`, fileMenuError);
+                    }
+
+                    try {
+                        editMenuItems = pluginManager.getMenuItemsForParent('edit') || [];
+                        console.log(`Main process: Edit menu items: ${editMenuItems.length}`);
+                    } catch (editMenuError) {
+                        console.error(`Main process: Error getting edit menu items:`, editMenuError);
+                    }
+
+                    try {
+                        runMenuItems = pluginManager.getMenuItemsForParent('run') || [];
+                        console.log(`Main process: Run menu items: ${runMenuItems.length}`);
+                    } catch (runMenuError) {
+                        console.error(`Main process: Error getting run menu items:`, runMenuError);
+                    }
 
                     // Gửi danh sách menu items mới cho renderer
+                    console.log(`Main process: Sending updated menu items to renderer`);
                     const allMenuItems = [...fileMenuItems, ...editMenuItems, ...runMenuItems];
                     event.sender.send('menu-items-changed', allMenuItems);
                 } catch (menuError) {
-                    console.error(`Main process: Error sending menu items:`, menuError);
+                    console.error(`Main process: Error updating menu items:`, menuError);
                 }
-            }, 500);
+            }, 1000); // Tăng thời gian chờ lên 1 giây để đảm bảo plugin đã được gỡ cài đặt hoàn toàn
         } catch (error) {
             console.error(`Main process: Error sending plugin list:`, error);
         }
 
         // Luôn trả về success: true để tránh màn hình trắng
+        console.log(`Main process: Uninstallation of ${pluginName} completed`);
         return {
             success: true,
             message: `Plugin ${pluginName} uninstalled successfully`
@@ -1375,6 +1442,59 @@ function sendResponse(id, success, message, data = null) {
         } catch (error: any) {
             console.error(`Error stopping execution:`, error);
             event.reply("stop-execution-result", {
+                success: false,
+                message: `Error: ${error.message || String(error)}`
+            });
+        }
+    });
+
+    // Thực thi plugin trực tiếp
+    ipcMain.on("execute-plugin", async (event, data: { pluginName: string, content: string, options?: any }) => {
+        try {
+            console.log(`Executing plugin ${data.pluginName} directly`);
+            console.log(`Content length: ${data.content?.length || 0}`);
+            console.log(`Options:`, data.options);
+
+            // Kiểm tra xem plugin đã được cài đặt chưa
+            const installedPlugins = pluginManager.getPlugins().map(p => p.name);
+            const normalizedName = data.pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+            if (!installedPlugins.includes(data.pluginName) && !installedPlugins.includes(normalizedName)) {
+                try {
+                    // Thử cài đặt plugin
+                    await pluginManager.installPlugin(data.pluginName);
+                    console.log(`Successfully installed plugin ${data.pluginName}`);
+                } catch (installError: any) {
+                    console.error(`Failed to install plugin ${data.pluginName}:`, installError);
+                    event.reply("plugin-executed", {
+                        success: false,
+                        message: `Error: Failed to install plugin ${data.pluginName}: ${installError.message || String(installError)}`
+                    });
+                    return;
+                }
+            }
+
+            // Thực thi plugin
+            try {
+                const result = await pluginManager.executePlugin(data.pluginName, data.content, undefined, data.options);
+                console.log(`Plugin execution result:`, result);
+
+                // Trả kết quả về renderer
+                event.reply("plugin-executed", {
+                    success: true,
+                    message: `Plugin ${data.pluginName} executed successfully`,
+                    data: result
+                });
+            } catch (executeError: any) {
+                console.error(`Error executing plugin ${data.pluginName}:`, executeError);
+                event.reply("plugin-executed", {
+                    success: false,
+                    message: `Error executing plugin: ${executeError.message || String(executeError)}`
+                });
+            }
+        } catch (error: any) {
+            console.error(`Error in execute-plugin handler:`, error);
+            event.reply("plugin-executed", {
                 success: false,
                 message: `Error: ${error.message || String(error)}`
             });
