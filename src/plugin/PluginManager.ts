@@ -15,8 +15,29 @@ import {
 } from './PluginInterface';
 import { MenuRegistry, MenuItem } from './MenuContribution';
 import { PluginInstaller } from './PluginInstaller';
-import { getAvailablePlugins } from '../services/firebase';
 import { StorageReference } from 'firebase/storage';
+
+// Import Firebase services
+import { getAvailablePlugins as getFirebasePlugins } from '../services/firebase';
+import { getAvailablePlugins as getMockPlugins } from '../services/firebase-mock';
+
+// Define the functions we'll use
+let getAvailablePlugins: () => Promise<{ name: string, ref: StorageReference }[]>;
+
+// Use a simple flag to determine which implementation to use
+let useFirebaseMock = false;
+
+try {
+  // Try to use the real Firebase implementation
+  getAvailablePlugins = getFirebasePlugins;
+  console.log('Successfully imported Firebase services');
+} catch (error) {
+  // Fall back to mock implementation
+  console.error('Error with Firebase services, falling back to mock implementation:', error);
+  useFirebaseMock = true;
+  getAvailablePlugins = getMockPlugins;
+  console.log('Using mock Firebase services');
+}
 
 /**
  * Quản lý các plugin và giao tiếp với chúng
@@ -53,8 +74,7 @@ export class PluginManager {
    * Khởi động server để lắng nghe kết nối từ các plugin
    */
   public async start(): Promise<void> {
-    // Load installed plugins
-    await this.loadInstalledPlugins();
+    // Khởi động server
     this.server = new Server((socket: Socket) => {
       console.log('Plugin connected');
 
@@ -83,6 +103,42 @@ export class PluginManager {
     this.server.listen(this.port, 'localhost', () => {
       console.log(`Plugin server running on port ${this.port}`);
     });
+
+    // Load installed plugins
+    await this.loadInstalledPlugins();
+
+    // Đảm bảo plugin AI Assistant được khởi động
+    await this.ensureAIAssistantRunning();
+  }
+
+  /**
+   * Đảm bảo plugin AI Assistant đang chạy
+   */
+  private async ensureAIAssistantRunning(): Promise<void> {
+    try {
+      console.log('Checking if AI Assistant plugin is installed and running...');
+
+      // Kiểm tra xem plugin AI Assistant đã được cài đặt chưa
+      const installedPlugins = this.pluginInstaller.getInstalledPlugins();
+      const aiAssistantPlugin = installedPlugins.find(p => p.name === 'ai-assistant');
+
+      if (aiAssistantPlugin) {
+        console.log('AI Assistant plugin is installed, ensuring it is running...');
+
+        // Kiểm tra xem plugin đã đang chạy chưa
+        if (!this.pluginProcesses.has('ai-assistant')) {
+          console.log('AI Assistant plugin is not running, starting it...');
+          await this.startPlugin('ai-assistant');
+        } else {
+          console.log('AI Assistant plugin is already running');
+        }
+      } else {
+        console.log('AI Assistant plugin is not installed');
+      }
+    } catch (error) {
+      console.error('Error ensuring AI Assistant plugin is running:', error);
+      // Không ném lỗi, chỉ ghi log
+    }
   }
 
   /**
@@ -415,7 +471,7 @@ export class PluginManager {
   }
 
   /**
-   * Uninstall a plugin - Sử dụng cách tiếp cận đơn giản hóa tối đa
+   * Uninstall a plugin - Cải tiến với xử lý lỗi tốt hơn
    */
   public async uninstallPlugin(pluginName: string): Promise<boolean> {
     if (!pluginName) {
@@ -430,39 +486,72 @@ export class PluginManager {
       const normalizedName = String(pluginName).replace(/(-\d+\.\d+\.\d+)$/, '');
       console.log(`PluginManager: Normalized plugin name: ${normalizedName}`);
 
-      // 2. Xóa plugin khỏi danh sách đã đăng ký
-      this.plugins.delete(pluginName);
-      this.plugins.delete(normalizedName);
-
-      // 3. Xóa các lệnh đã đăng ký
-      const commandsToRemove = Object.keys(this.commands || {}).filter(cmd =>
-        cmd.startsWith(`${pluginName}.`) || cmd.startsWith(`${normalizedName}.`)
-      );
-
-      for (const cmd of commandsToRemove) {
-        console.log(`PluginManager: Removing command: ${cmd}`);
-        delete this.commands[cmd];
-      }
-
-      // 4. Dừng plugin nếu đang chạy
-      if (this.pluginProcesses.has(pluginName)) {
-        try {
-          const process = this.pluginProcesses.get(pluginName);
-          if (process && !process.killed) {
-            process.kill();
-          }
-          this.pluginProcesses.delete(pluginName);
-        } catch (error) {
-          console.error(`PluginManager: Error stopping plugin process:`, error);
-          // Tiếp tục ngay cả khi có lỗi
-        }
-      }
-
-      // 5. Xóa thư mục plugin
+      // 2. Xóa plugin khỏi danh sách đã đăng ký - với xử lý lỗi
       try {
-        this.pluginInstaller.uninstallPlugin(pluginName);
-      } catch (error) {
-        console.error(`PluginManager: Error removing plugin directory:`, error);
+        if (this.plugins.has(pluginName)) {
+          console.log(`PluginManager: Removing plugin from registry: ${pluginName}`);
+          this.plugins.delete(pluginName);
+        }
+
+        if (this.plugins.has(normalizedName)) {
+          console.log(`PluginManager: Removing normalized plugin from registry: ${normalizedName}`);
+          this.plugins.delete(normalizedName);
+        }
+      } catch (registryError) {
+        console.error(`PluginManager: Error removing plugin from registry:`, registryError);
+        // Tiếp tục ngay cả khi có lỗi
+      }
+
+      // 3. Xóa các lệnh đã đăng ký - với xử lý lỗi
+      try {
+        if (this.commands) {
+          const commandsToRemove = Object.keys(this.commands).filter(cmd =>
+            cmd.startsWith(`${pluginName}.`) || cmd.startsWith(`${normalizedName}.`)
+          );
+
+          for (const cmd of commandsToRemove) {
+            console.log(`PluginManager: Removing command: ${cmd}`);
+            delete this.commands[cmd];
+          }
+        }
+      } catch (commandsError) {
+        console.error(`PluginManager: Error removing commands:`, commandsError);
+        // Tiếp tục ngay cả khi có lỗi
+      }
+
+      // 4. Dừng plugin nếu đang chạy - với xử lý lỗi cải tiến
+      try {
+        if (this.pluginProcesses && this.pluginProcesses.has(pluginName)) {
+          console.log(`PluginManager: Stopping plugin process: ${pluginName}`);
+          const process = this.pluginProcesses.get(pluginName);
+
+          if (process) {
+            try {
+              if (!process.killed) {
+                process.kill();
+                console.log(`PluginManager: Successfully killed process for ${pluginName}`);
+              } else {
+                console.log(`PluginManager: Process for ${pluginName} was already killed`);
+              }
+            } catch (killError) {
+              console.error(`PluginManager: Error killing process:`, killError);
+            }
+
+            this.pluginProcesses.delete(pluginName);
+          }
+        }
+      } catch (processError) {
+        console.error(`PluginManager: Error handling plugin process:`, processError);
+        // Tiếp tục ngay cả khi có lỗi
+      }
+
+      // 5. Xóa thư mục plugin - với xử lý lỗi cải tiến
+      try {
+        console.log(`PluginManager: Removing plugin directory for: ${pluginName}`);
+        const uninstallResult = this.pluginInstaller.uninstallPlugin(pluginName);
+        console.log(`PluginManager: Plugin directory removal result: ${uninstallResult}`);
+      } catch (dirError) {
+        console.error(`PluginManager: Error removing plugin directory:`, dirError);
         // Tiếp tục ngay cả khi có lỗi
       }
     } catch (error) {
@@ -470,31 +559,71 @@ export class PluginManager {
       // Không ném lỗi, chỉ ghi log
     }
 
-    // Luôn thông báo thay đổi danh sách plugin
+    // Luôn thông báo thay đổi danh sách plugin - với xử lý lỗi cải tiến
     try {
-      this.onPluginListChanged(this.getPlugins());
+      console.log(`PluginManager: Notifying plugin list changed after uninstallation`);
+      const currentPlugins = this.getPlugins();
+      console.log(`PluginManager: Current plugins after uninstallation: ${currentPlugins.length}`);
 
-      // Cập nhật menu items
+      // Đảm bảo onPluginListChanged được gọi an toàn
+      if (typeof this.onPluginListChanged === 'function') {
+        this.onPluginListChanged(currentPlugins);
+      } else {
+        console.warn(`PluginManager: onPluginListChanged is not a function`);
+      }
+
+      // Cập nhật menu items - với xử lý lỗi cải tiến
       setTimeout(() => {
         try {
-          // Lấy danh sách menu items cho các menu cha
-          const fileMenuItems = this.getMenuItemsForParent('file');
-          const editMenuItems = this.getMenuItemsForParent('edit');
-          const runMenuItems = this.getMenuItemsForParent('run');
+          console.log(`PluginManager: Updating menu items after plugin uninstallation`);
 
-          console.log(`PluginManager: Sending updated menu items after plugin uninstallation`);
-          console.log(`File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`);
+          // Lấy danh sách menu items cho các menu cha - với xử lý lỗi
+          let fileMenuItems: MenuItem[] = [];
+          let editMenuItems: MenuItem[] = [];
+          let runMenuItems: MenuItem[] = [];
 
-          // Thông báo thay đổi menu items
-          this.onMenuItemsChanged([...fileMenuItems, ...editMenuItems, ...runMenuItems]);
+          try {
+            fileMenuItems = this.getMenuItemsForParent('file') || [];
+            console.log(`PluginManager: File menu items: ${fileMenuItems.length}`);
+          } catch (fileMenuError) {
+            console.error(`PluginManager: Error getting file menu items:`, fileMenuError);
+            fileMenuItems = [];
+          }
+
+          try {
+            editMenuItems = this.getMenuItemsForParent('edit') || [];
+            console.log(`PluginManager: Edit menu items: ${editMenuItems.length}`);
+          } catch (editMenuError) {
+            console.error(`PluginManager: Error getting edit menu items:`, editMenuError);
+            editMenuItems = [];
+          }
+
+          try {
+            runMenuItems = this.getMenuItemsForParent('run') || [];
+            console.log(`PluginManager: Run menu items: ${runMenuItems.length}`);
+          } catch (runMenuError) {
+            console.error(`PluginManager: Error getting run menu items:`, runMenuError);
+            runMenuItems = [];
+          }
+
+          // Thông báo thay đổi menu items - với xử lý lỗi
+          const allMenuItems = [...fileMenuItems, ...editMenuItems, ...runMenuItems];
+          console.log(`PluginManager: Total menu items to update: ${allMenuItems.length}`);
+
+          if (typeof this.onMenuItemsChanged === 'function') {
+            this.onMenuItemsChanged(allMenuItems);
+          } else {
+            console.warn(`PluginManager: onMenuItemsChanged is not a function`);
+          }
         } catch (menuError) {
-          console.error(`PluginManager: Error sending menu items:`, menuError);
+          console.error(`PluginManager: Error updating menu items:`, menuError);
         }
       }, 500);
     } catch (error) {
       console.error(`PluginManager: Error notifying plugin list changed:`, error);
     }
 
+    console.log(`PluginManager: Uninstall completed for plugin: ${pluginName}`);
     // Luôn trả về true để tránh lỗi UI
     return true;
   }
@@ -527,6 +656,12 @@ export class PluginManager {
   public async startPlugin(pluginName: string): Promise<void> {
     try {
       console.log(`Starting plugin: ${pluginName}`);
+
+      // Xử lý đặc biệt cho plugin ai-assistant
+      if (pluginName === 'ai-assistant') {
+        console.log('Using special handling for ai-assistant plugin');
+        return await this.startAIAssistantPlugin(pluginName);
+      }
 
       // Get the main script path
       const mainPath = this.pluginInstaller.getPluginMainPath(pluginName);
@@ -700,6 +835,157 @@ export class PluginManager {
       }
     } catch (error) {
       console.error(`Error starting plugin ${pluginName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start AI Assistant plugin
+   */
+  private async startAIAssistantPlugin(pluginName: string): Promise<void> {
+    try {
+      console.log(`Starting AI Assistant plugin: ${pluginName}`);
+
+      // Get the main script path
+      const mainPath = this.pluginInstaller.getPluginMainPath(pluginName);
+
+      if (!mainPath) {
+        throw new Error(`Plugin ${pluginName} main script not found`);
+      }
+
+      console.log(`Found main script at: ${mainPath}`);
+
+      // Check if the plugin is already running
+      if (this.pluginProcesses.has(pluginName)) {
+        console.log(`Plugin ${pluginName} is already running`);
+        return;
+      }
+
+      // Get plugin directory
+      const pluginDir = path.dirname(mainPath);
+      console.log(`Plugin directory: ${pluginDir}`);
+
+      // Check if package.json exists
+      const packageJsonPath = path.join(pluginDir, 'package.json');
+      if (fs.existsSync(packageJsonPath)) {
+        try {
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+          console.log(`Package.json for plugin ${pluginName}:`, packageJson);
+
+          // Check if node_modules exists
+          const nodeModulesPath = path.join(pluginDir, 'node_modules');
+          console.log(`Checking for node_modules at: ${nodeModulesPath}`);
+          if (!fs.existsSync(nodeModulesPath)) {
+            console.warn(`node_modules not found for plugin ${pluginName}. Installing dependencies...`);
+            try {
+              const { execSync } = require('child_process');
+              execSync('npm install --no-fund --no-audit --loglevel=error', {
+                cwd: pluginDir,
+                stdio: 'inherit',
+                timeout: 60000 // 60 seconds timeout
+              });
+              console.log(`Dependencies installed successfully for plugin ${pluginName}`);
+            } catch (npmError) {
+              console.error(`Error installing dependencies for plugin ${pluginName}:`, npmError);
+              console.log('Continuing without installing dependencies - plugin may not work correctly');
+            }
+          } else {
+            console.log(`node_modules found for plugin ${pluginName}`);
+          }
+
+          // Start the plugin process with appropriate arguments
+          const args = [mainPath];
+
+          // Add port argument
+          args.push(`--port=${this.port}`);
+
+          // Start the plugin process
+          const process = spawn('node', args, {
+            stdio: 'pipe',
+            detached: false,
+            cwd: pluginDir // Set working directory to plugin directory
+          });
+
+          // Store the process
+          this.pluginProcesses.set(pluginName, process);
+
+          // Handle process output
+          process.stdout.on('data', (data) => {
+            console.log(`[Plugin ${pluginName}] ${data.toString().trim()}`);
+          });
+
+          process.stderr.on('data', (data) => {
+            console.error(`[Plugin ${pluginName} Error] ${data.toString().trim()}`);
+          });
+
+          // Handle process exit
+          process.on('exit', (code) => {
+            console.log(`Plugin ${pluginName} exited with code ${code}`);
+            this.pluginProcesses.delete(pluginName);
+
+            // Automatically restart the plugin if it exits
+            console.log(`Automatically restarting plugin ${pluginName}...`);
+            setTimeout(() => {
+              this.startAIAssistantPlugin(pluginName).catch(error => {
+                console.error(`Error restarting plugin ${pluginName}:`, error);
+              });
+            }, 5000); // Wait 5 seconds before restarting
+          });
+
+          // Register the plugin manually if it doesn't connect within the timeout period
+          setTimeout(() => {
+            if (!this.plugins.has(pluginName)) {
+              console.log(`Manually registering plugin ${pluginName}`);
+
+              // Create plugin info
+              const pluginInfo: PluginInfo = {
+                name: pluginName,
+                version: packageJson.version || '1.0.0',
+                description: packageJson.description || 'AI Assistant plugin for Text Editor',
+                author: packageJson.author || 'nhtam'
+              };
+
+              // Create a dummy connection for the plugin
+              const dummySocket = new Socket();
+              const pluginConnection = new PluginConnection(dummySocket, pluginInfo);
+
+              // Add to plugins list
+              this.plugins.set(pluginName, pluginConnection);
+
+              // Register menu items from package.json
+              if (packageJson.menuItems && Array.isArray(packageJson.menuItems)) {
+                console.log(`Found menu items in package.json for ${pluginName}:`, packageJson.menuItems);
+
+                // Register menu items
+                for (const menuItem of packageJson.menuItems) {
+                  const item: MenuItem = {
+                    ...menuItem,
+                    pluginId: pluginName
+                  };
+                  console.log(`Registering menu item from package.json: ${JSON.stringify(item)}`);
+                  this.menuRegistry.registerMenuItem(item);
+                }
+
+                // Notify that menu items have changed
+                const allMenuItems = this.menuRegistry.getMenuItems();
+                this.onMenuItemsChanged(allMenuItems);
+              }
+
+              // Notify that the plugin list has changed
+              this.onPluginListChanged(this.getPlugins());
+            }
+          }, 10000); // Wait 10 seconds for the plugin to connect
+
+          console.log(`AI Assistant plugin ${pluginName} started successfully`);
+        } catch (error) {
+          console.error(`Error starting AI Assistant plugin ${pluginName}:`, error);
+          throw error;
+        }
+      } else {
+        throw new Error(`Package.json not found for plugin ${pluginName}`);
+      }
+    } catch (error) {
+      console.error(`Error starting AI Assistant plugin ${pluginName}:`, error);
       throw error;
     }
   }

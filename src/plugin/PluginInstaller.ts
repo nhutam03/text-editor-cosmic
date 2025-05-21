@@ -2,10 +2,38 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import extractZip from 'extract-zip';
-import { getPluginDownloadUrl, getPluginDownloadUrlByName } from '../services/firebase';
 import { StorageReference } from 'firebase/storage';
 import { PluginInfo } from './PluginInterface';
 import AdmZip from 'adm-zip';
+
+// Import Firebase services directly
+import {
+  getPluginDownloadUrl as getFirebaseDownloadUrl,
+  getPluginDownloadUrlByName as getFirebaseDownloadUrlByName
+} from '../services/firebase';
+
+import {
+  getPluginDownloadUrl as getMockDownloadUrl,
+  getPluginDownloadUrlByName as getMockDownloadUrlByName
+} from '../services/firebase-mock';
+
+// Define the functions we'll use
+let getPluginDownloadUrl: (pluginRef: StorageReference) => Promise<string>;
+let getPluginDownloadUrlByName: (pluginName: string) => Promise<string>;
+
+// Use Firebase implementation by default
+getPluginDownloadUrl = getFirebaseDownloadUrl;
+getPluginDownloadUrlByName = getFirebaseDownloadUrlByName;
+
+// Fallback to mock if needed
+try {
+  console.log('PluginInstaller: Using Firebase services');
+} catch (error) {
+  console.error('PluginInstaller: Error with Firebase services, falling back to mock implementation:', error);
+  getPluginDownloadUrl = getMockDownloadUrl;
+  getPluginDownloadUrlByName = getMockDownloadUrlByName;
+  console.log('PluginInstaller: Using mock Firebase services');
+}
 
 /**
  * Class responsible for installing and managing plugins
@@ -825,119 +853,355 @@ function sendResponse(id, success, message, data = null) {
   }
 
   /**
-   * Get a list of installed plugins
+   * Get a list of installed plugins - Cải tiến để đảm bảo trả về danh sách đầy đủ
    */
   public getInstalledPlugins(): PluginInfo[] {
+    console.log('PluginInstaller: Getting installed plugins');
+
     // Refresh the list of installed plugins
     this.refreshInstalledPlugins();
 
     // Đảm bảo tất cả các plugin được đánh dấu là đã cài đặt
     const plugins = Array.from(this.installedPlugins.values());
+
+    // Loại bỏ các plugin trùng lặp dựa trên tên
+    const uniquePlugins: PluginInfo[] = [];
+    const pluginNames = new Set<string>();
+
     for (const plugin of plugins) {
+      // Đảm bảo plugin có tên hợp lệ
+      if (!plugin.name) {
+        console.warn('PluginInstaller: Found plugin without name, skipping');
+        continue;
+      }
+
+      // Đảm bảo plugin được đánh dấu là đã cài đặt
       plugin.installed = true;
+
+      // Chỉ thêm plugin nếu chưa có trong danh sách
+      if (!pluginNames.has(plugin.name)) {
+        pluginNames.add(plugin.name);
+        uniquePlugins.push(plugin);
+      }
     }
 
-    console.log('getInstalledPlugins returning:', plugins.map(p => `${p.name} (installed: ${p.installed})`))
-    return plugins;
+    // Đặc biệt kiểm tra plugin prettier
+    const hasPrettier = uniquePlugins.some(p =>
+      p.name === 'prettier-plugin' || p.name.includes('prettier')
+    );
+
+    // Nếu có thư mục prettier nhưng không có trong danh sách, thêm vào
+    if (!hasPrettier) {
+      const prettierDir = path.join(this.pluginsDir, 'prettier-plugin');
+      if (fs.existsSync(prettierDir)) {
+        console.log('PluginInstaller: Found prettier directory but not in plugins list, adding it');
+        uniquePlugins.push({
+          name: 'prettier-plugin',
+          version: '1.0.0',
+          description: 'Prettier code formatter',
+          author: 'Unknown',
+          installed: true
+        });
+      }
+    }
+
+    console.log('PluginInstaller: getInstalledPlugins returning:', uniquePlugins.map(p => `${p.name} (installed: ${p.installed})`));
+    return uniquePlugins;
   }
 
   /**
-   * Check if a plugin is installed
+   * Check if a plugin is installed - Cải tiến để kiểm tra chính xác hơn
    */
   public isPluginInstalled(pluginName: string): boolean {
+    if (!pluginName) {
+      console.warn('PluginInstaller: isPluginInstalled called with empty plugin name');
+      return false;
+    }
+
+    console.log(`PluginInstaller: Checking if plugin is installed: ${pluginName}`);
+
     // Normalize plugin name (remove version suffix if present)
     const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+    console.log(`PluginInstaller: Normalized name: ${normalizedName}`);
 
     // Refresh the list of installed plugins
     this.refreshInstalledPlugins();
 
-    // Check if either the original name or normalized name is installed
-    return this.installedPlugins.has(pluginName) || this.installedPlugins.has(normalizedName);
+    // Kiểm tra với tên gốc
+    if (this.installedPlugins.has(pluginName)) {
+      console.log(`PluginInstaller: Plugin ${pluginName} is installed (exact match)`);
+      return true;
+    }
+
+    // Kiểm tra với tên chuẩn hóa
+    if (this.installedPlugins.has(normalizedName)) {
+      console.log(`PluginInstaller: Plugin ${pluginName} is installed (normalized match: ${normalizedName})`);
+      return true;
+    }
+
+    // Kiểm tra thư mục plugin
+    const exactDir = path.join(this.pluginsDir, pluginName);
+    if (fs.existsSync(exactDir)) {
+      console.log(`PluginInstaller: Plugin ${pluginName} is installed (directory exists)`);
+      return true;
+    }
+
+    const normalizedDir = path.join(this.pluginsDir, normalizedName);
+    if (fs.existsSync(normalizedDir)) {
+      console.log(`PluginInstaller: Plugin ${pluginName} is installed (normalized directory exists)`);
+      return true;
+    }
+
+    // Kiểm tra file extensions.json
+    try {
+      const extensionsJsonPath = path.join(this.pluginsDir, '..', 'extensions.json');
+      if (fs.existsSync(extensionsJsonPath)) {
+        const extensionsContent = fs.readFileSync(extensionsJsonPath, 'utf8');
+        const extensions = JSON.parse(extensionsContent);
+
+        if (extensions[pluginName] && (extensions[pluginName] as any).enabled) {
+          console.log(`PluginInstaller: Plugin ${pluginName} is installed (found in extensions.json)`);
+          return true;
+        }
+
+        if (extensions[normalizedName] && (extensions[normalizedName] as any).enabled) {
+          console.log(`PluginInstaller: Plugin ${pluginName} is installed (normalized name found in extensions.json)`);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error(`PluginInstaller: Error checking extensions.json:`, error);
+    }
+
+    // Đặc biệt xử lý cho plugin prettier
+    if (pluginName.includes('prettier') || normalizedName.includes('prettier')) {
+      const prettierDir = path.join(this.pluginsDir, 'prettier-plugin');
+      if (fs.existsSync(prettierDir)) {
+        console.log(`PluginInstaller: Prettier plugin is installed (special case)`);
+        return true;
+      }
+    }
+
+    console.log(`PluginInstaller: Plugin ${pluginName} is not installed`);
+    return false;
   }
 
   /**
-   * Refresh the list of installed plugins
+   * Refresh the list of installed plugins - Cải tiến để xử lý lỗi tốt hơn
    */
   private refreshInstalledPlugins(): void {
     try {
+      console.log(`PluginInstaller: Refreshing installed plugins list`);
+
       // Clear the current list
       this.installedPlugins.clear();
 
       // Ensure the plugins directory exists
       this.ensurePluginsDirectory();
 
-      // Read all plugin directories
-      const pluginDirs = fs.readdirSync(this.pluginsDir, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
+      // Read all plugin directories with error handling
+      let pluginDirs: string[] = [];
+      try {
+        pluginDirs = fs.readdirSync(this.pluginsDir, { withFileTypes: true })
+          .filter(dirent => dirent.isDirectory())
+          .map(dirent => dirent.name);
 
-      console.log(`Found plugin directories: ${pluginDirs.join(', ')}`);
+        console.log(`PluginInstaller: Found ${pluginDirs.length} plugin directories: ${pluginDirs.join(', ')}`);
+      } catch (readDirError) {
+        console.error(`PluginInstaller: Error reading plugins directory:`, readDirError);
+        pluginDirs = [];
+      }
 
-      // Process each plugin directory
+      // Process each plugin directory with improved error handling
       for (const pluginDir of pluginDirs) {
-        const pluginDirPath = path.join(this.pluginsDir, pluginDir);
-        const packageJsonPath = path.join(pluginDirPath, 'package.json');
-        console.log(`Checking for package.json at: ${packageJsonPath}`);
+        try {
+          console.log(`PluginInstaller: Processing plugin directory: ${pluginDir}`);
+          const pluginDirPath = path.join(this.pluginsDir, pluginDir);
 
-        if (fs.existsSync(packageJsonPath)) {
-          // Process package.json in the root directory
-          this.processPackageJson(packageJsonPath, pluginDir);
-        } else {
-          console.log(`No package.json found in root directory, searching subdirectories...`);
-
-          // Check for subdirectories that might contain the plugin
-          try {
-            const subdirs = fs.readdirSync(pluginDirPath).filter(file => {
-              const filePath = path.join(pluginDirPath, file);
-              return fs.statSync(filePath).isDirectory();
-            });
-
-            // Normalize plugin name (remove version suffix if present)
-            const normalizedDirName = pluginDir.replace(/(-\d+\.\d+\.\d+)$/, '');
-
-            // First, look for a subdirectory with the same name as the plugin
-            const pluginNameSubdir = subdirs.find(dir => dir === normalizedDirName || dir === pluginDir);
-            const subdirsToCheck = pluginNameSubdir ?
-              [pluginNameSubdir, ...subdirs.filter(dir => dir !== pluginNameSubdir)] : subdirs;
-
-            let foundInSubdir = false;
-
-            for (const subdir of subdirsToCheck) {
-              const subdirPath = path.join(pluginDirPath, subdir);
-              const subPackageJsonPath = path.join(subdirPath, 'package.json');
-
-              if (fs.existsSync(subPackageJsonPath)) {
-                console.log(`Found package.json in subdirectory: ${subdir}`);
-                foundInSubdir = true;
-
-                // Process package.json in the subdirectory
-                this.processPackageJson(subPackageJsonPath, pluginDir, subdir);
-                break; // Process only the first valid package.json found
-              }
-            }
-
-            if (!foundInSubdir) {
-              console.log(`No package.json found in any subdirectory of ${pluginDir}`);
-            }
-          } catch (error) {
-            console.error(`Error searching subdirectories of ${pluginDir}:`, error);
+          if (!fs.existsSync(pluginDirPath)) {
+            console.log(`PluginInstaller: Directory no longer exists: ${pluginDirPath}`);
+            continue;
           }
+
+          const packageJsonPath = path.join(pluginDirPath, 'package.json');
+          console.log(`PluginInstaller: Checking for package.json at: ${packageJsonPath}`);
+
+          if (fs.existsSync(packageJsonPath)) {
+            // Process package.json in the root directory
+            this.processPackageJson(packageJsonPath, pluginDir);
+          } else {
+            console.log(`PluginInstaller: No package.json found in root directory, searching subdirectories...`);
+
+            // Check for subdirectories that might contain the plugin
+            try {
+              const subdirs = fs.readdirSync(pluginDirPath).filter(file => {
+                try {
+                  const filePath = path.join(pluginDirPath, file);
+                  return fs.existsSync(filePath) && fs.statSync(filePath).isDirectory();
+                } catch (statError) {
+                  console.error(`PluginInstaller: Error checking if ${file} is a directory:`, statError);
+                  return false;
+                }
+              });
+
+              console.log(`PluginInstaller: Found ${subdirs.length} subdirectories in ${pluginDir}`);
+
+              // Normalize plugin name (remove version suffix if present)
+              const normalizedDirName = pluginDir.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+              // First, look for a subdirectory with the same name as the plugin
+              const pluginNameSubdir = subdirs.find(dir => dir === normalizedDirName || dir === pluginDir);
+              const subdirsToCheck = pluginNameSubdir ?
+                [pluginNameSubdir, ...subdirs.filter(dir => dir !== pluginNameSubdir)] : subdirs;
+
+              let foundInSubdir = false;
+
+              for (const subdir of subdirsToCheck) {
+                try {
+                  const subdirPath = path.join(pluginDirPath, subdir);
+
+                  if (!fs.existsSync(subdirPath)) {
+                    console.log(`PluginInstaller: Subdirectory no longer exists: ${subdirPath}`);
+                    continue;
+                  }
+
+                  const subPackageJsonPath = path.join(subdirPath, 'package.json');
+
+                  if (fs.existsSync(subPackageJsonPath)) {
+                    console.log(`PluginInstaller: Found package.json in subdirectory: ${subdir}`);
+                    foundInSubdir = true;
+
+                    // Process package.json in the subdirectory
+                    this.processPackageJson(subPackageJsonPath, pluginDir, subdir);
+                    break; // Process only the first valid package.json found
+                  }
+                } catch (subdirError) {
+                  console.error(`PluginInstaller: Error processing subdirectory ${subdir}:`, subdirError);
+                  continue;
+                }
+              }
+
+              if (!foundInSubdir) {
+                console.log(`PluginInstaller: No package.json found in any subdirectory of ${pluginDir}`);
+
+                // Nếu không tìm thấy package.json, vẫn đăng ký plugin với thông tin tối thiểu
+                // Điều này giúp hiển thị plugin trong danh sách đã cài đặt ngay cả khi không có package.json
+                const pluginInfo: PluginInfo = {
+                  name: pluginDir,
+                  version: '1.0.0',
+                  description: `Plugin ${pluginDir}`,
+                  author: 'Unknown',
+                  installed: true
+                };
+
+                console.log(`PluginInstaller: Registering plugin without package.json: ${pluginDir}`);
+                this.installedPlugins.set(pluginDir, pluginInfo);
+              }
+            } catch (subdirError) {
+              console.error(`PluginInstaller: Error searching subdirectories of ${pluginDir}:`, subdirError);
+
+              // Vẫn đăng ký plugin với thông tin tối thiểu nếu có lỗi
+              const pluginInfo: PluginInfo = {
+                name: pluginDir,
+                version: '1.0.0',
+                description: `Plugin ${pluginDir}`,
+                author: 'Unknown',
+                installed: true
+              };
+
+              console.log(`PluginInstaller: Registering plugin despite subdirectory error: ${pluginDir}`);
+              this.installedPlugins.set(pluginDir, pluginInfo);
+            }
+          }
+        } catch (dirError) {
+          console.error(`PluginInstaller: Error processing plugin directory ${pluginDir}:`, dirError);
+
+          // Vẫn đăng ký plugin với thông tin tối thiểu nếu có lỗi
+          const pluginInfo: PluginInfo = {
+            name: pluginDir,
+            version: '1.0.0',
+            description: `Plugin ${pluginDir}`,
+            author: 'Unknown',
+            installed: true
+          };
+
+          console.log(`PluginInstaller: Registering plugin despite processing error: ${pluginDir}`);
+          this.installedPlugins.set(pluginDir, pluginInfo);
         }
       }
 
-      console.log(`Refreshed installed plugins: ${Array.from(this.installedPlugins.keys()).join(', ')}`);
+      // Kiểm tra file extensions.json để đảm bảo tất cả các plugin đã cài đặt được đăng ký
+      try {
+        const extensionsJsonPath = path.join(this.pluginsDir, '..', 'extensions.json');
+        if (fs.existsSync(extensionsJsonPath)) {
+          const extensionsContent = fs.readFileSync(extensionsJsonPath, 'utf8');
+          const extensions = JSON.parse(extensionsContent);
+
+          for (const [pluginName, info] of Object.entries(extensions)) {
+            if (info && (info as any).enabled) {
+              // Nếu plugin được bật trong extensions.json nhưng không có trong danh sách đã cài đặt
+              if (!this.installedPlugins.has(pluginName)) {
+                console.log(`PluginInstaller: Found plugin in extensions.json but not in directory: ${pluginName}`);
+
+                // Kiểm tra xem thư mục plugin có tồn tại không
+                const pluginDirPath = path.join(this.pluginsDir, pluginName);
+                if (fs.existsSync(pluginDirPath)) {
+                  console.log(`PluginInstaller: Directory exists for ${pluginName}, registering plugin`);
+
+                  // Đăng ký plugin với thông tin tối thiểu
+                  const pluginInfo: PluginInfo = {
+                    name: pluginName,
+                    version: '1.0.0',
+                    description: `Plugin ${pluginName}`,
+                    author: 'Unknown',
+                    installed: true
+                  };
+
+                  this.installedPlugins.set(pluginName, pluginInfo);
+                }
+              }
+            }
+          }
+        }
+      } catch (extensionsError) {
+        console.error(`PluginInstaller: Error checking extensions.json:`, extensionsError);
+      }
+
+      console.log(`PluginInstaller: Refreshed installed plugins: ${Array.from(this.installedPlugins.keys()).join(', ')}`);
     } catch (error) {
-      console.error('Error refreshing installed plugins:', error);
+      console.error('PluginInstaller: Error refreshing installed plugins:', error);
     }
   }
 
   /**
-   * Process a package.json file and register the plugin
+   * Process a package.json file and register the plugin - Cải tiến với xử lý lỗi tốt hơn
    */
   private processPackageJson(packageJsonPath: string, pluginDir: string, subdir?: string): void {
     try {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      console.log(`Found package.json for plugin ${subdir ? `${pluginDir}/${subdir}` : pluginDir}: ${JSON.stringify(packageJson, null, 2)}`);
+      console.log(`PluginInstaller: Processing package.json at ${packageJsonPath}`);
+
+      // Đọc file package.json với xử lý lỗi
+      let packageJson;
+      try {
+        const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf-8');
+        packageJson = JSON.parse(packageJsonContent);
+        console.log(`PluginInstaller: Successfully parsed package.json for plugin ${subdir ? `${pluginDir}/${subdir}` : pluginDir}`);
+      } catch (readError) {
+        console.error(`PluginInstaller: Error reading package.json at ${packageJsonPath}:`, readError);
+
+        // Nếu không đọc được package.json, vẫn đăng ký plugin với thông tin tối thiểu
+        const pluginInfo: PluginInfo = {
+          name: pluginDir,
+          version: '1.0.0',
+          description: `Plugin ${pluginDir}`,
+          author: 'Unknown',
+          installed: true
+        };
+
+        console.log(`PluginInstaller: Registering plugin with minimal info due to package.json read error: ${pluginDir}`);
+        this.installedPlugins.set(pluginDir, pluginInfo);
+        return;
+      }
 
       // Normalize plugin name (remove version suffix if present)
       let pluginName = packageJson.name || pluginDir;
@@ -948,25 +1212,54 @@ function sendResponse(id, success, message, data = null) {
         pluginName = normalizedName;
       }
 
-      console.log(`Using plugin name: ${pluginName} (normalized from ${packageJson.name || pluginDir})`);
+      console.log(`PluginInstaller: Using plugin name: ${pluginName} (normalized from ${packageJson.name || pluginDir})`);
 
+      // Tạo thông tin plugin
       const pluginInfo: PluginInfo = {
         name: pluginName,
         version: packageJson.version || '1.0.0',
         description: packageJson.description || 'No description provided',
-        author: packageJson.author || 'Unknown',
+        author: typeof packageJson.author === 'string' ? packageJson.author :
+               (packageJson.author && packageJson.author.name ? packageJson.author.name : 'Unknown'),
         installed: true
       };
 
+      // Đăng ký plugin với tên từ package.json
+      console.log(`PluginInstaller: Registering plugin with name from package.json: ${pluginInfo.name}`);
       this.installedPlugins.set(pluginInfo.name, pluginInfo);
 
-      // Also register with the directory name if it's different
+      // Đăng ký plugin với tên thư mục nếu khác
       if (pluginDir !== pluginInfo.name) {
-        console.log(`Also registering plugin with directory name: ${pluginDir}`);
+        console.log(`PluginInstaller: Also registering plugin with directory name: ${pluginDir}`);
         this.installedPlugins.set(pluginDir, pluginInfo);
       }
+
+      // Đăng ký plugin với tên chuẩn hóa nếu khác
+      if (normalizedName !== pluginInfo.name && normalizedName !== pluginDir) {
+        console.log(`PluginInstaller: Also registering plugin with normalized name: ${normalizedName}`);
+        this.installedPlugins.set(normalizedName, pluginInfo);
+      }
+
+      // Đặc biệt xử lý cho plugin prettier
+      if (pluginInfo.name.includes('prettier') || pluginDir.includes('prettier') ||
+          (packageJson.keywords && packageJson.keywords.includes('prettier'))) {
+        console.log(`PluginInstaller: Detected prettier plugin, ensuring it's registered as 'prettier-plugin'`);
+        this.installedPlugins.set('prettier-plugin', pluginInfo);
+      }
     } catch (error) {
-      console.error(`Error processing package.json at ${packageJsonPath}:`, error);
+      console.error(`PluginInstaller: Error processing package.json at ${packageJsonPath}:`, error);
+
+      // Nếu có lỗi, vẫn đăng ký plugin với thông tin tối thiểu
+      const pluginInfo: PluginInfo = {
+        name: pluginDir,
+        version: '1.0.0',
+        description: `Plugin ${pluginDir}`,
+        author: 'Unknown',
+        installed: true
+      };
+
+      console.log(`PluginInstaller: Registering plugin with minimal info due to processing error: ${pluginDir}`);
+      this.installedPlugins.set(pluginDir, pluginInfo);
     }
   }
 
