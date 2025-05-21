@@ -1,11 +1,14 @@
-import fs from 'fs';
-import path from 'path';
-import { app } from 'electron';
-import extractZip from 'extract-zip';
-import { getPluginDownloadUrl, getPluginDownloadUrlByName } from '../services/firebase';
-import { StorageReference } from 'firebase/storage';
-import { PluginInfo } from './PluginInterface';
-import AdmZip from 'adm-zip';
+import fs from "fs";
+import path from "path";
+import { app } from "electron";
+import extractZip from "extract-zip";
+import {
+  getPluginDownloadUrl,
+  getPluginDownloadUrlByName,
+} from "../services/firebase";
+import { StorageReference } from "firebase/storage";
+import { PluginInfo } from "./PluginInterface";
+import AdmZip from "adm-zip";
 
 /**
  * Class responsible for installing and managing plugins
@@ -16,7 +19,7 @@ export class PluginInstaller {
 
   constructor() {
     // Create plugins directory in user data folder
-    this.pluginsDir = path.join(app.getPath('userData'), 'plugins');
+    this.pluginsDir = path.join(app.getPath("userData"), "plugins");
     this.ensurePluginsDirectory();
   }
 
@@ -45,12 +48,12 @@ export class PluginInstaller {
       const downloadUrl = await getPluginDownloadUrl(pluginRef);
 
       // Extract plugin name from reference
-      const pluginName = pluginRef.name.replace('.zip', '');
+      const pluginName = pluginRef.name.replace(".zip", "");
 
       // Download and install the plugin
       return await this.downloadAndInstallPlugin(pluginName, downloadUrl);
     } catch (error) {
-      console.error('Error installing plugin:', error);
+      console.error("Error installing plugin:", error);
       throw error;
     }
   }
@@ -63,13 +66,13 @@ export class PluginInstaller {
       console.log(`Installing plugin by name: ${pluginName}`);
 
       // Xử lý đặc biệt cho export-to-pdf
-      if (pluginName === 'export-to-pdf') {
-        console.log('Using direct installation for export-to-pdf plugin');
+      if (pluginName === "export-to-pdf") {
+        console.log("Using direct installation for export-to-pdf plugin");
         return await this.installExportToPdfPlugin();
       }
 
       // Normalize plugin name (remove version suffix if present)
-      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
       console.log(`Normalized plugin name: ${normalizedName}`);
 
       // Get download URL
@@ -77,7 +80,10 @@ export class PluginInstaller {
       console.log(`Got download URL for plugin: ${downloadUrl}`);
 
       // Download and install the plugin
-      const pluginInfo = await this.downloadAndInstallPlugin(pluginName, downloadUrl);
+      const pluginInfo = await this.downloadAndInstallPlugin(
+        pluginName,
+        downloadUrl
+      );
 
       // If the plugin directory has version in name but the plugin info doesn't, create a symlink
       if (pluginName !== normalizedName) {
@@ -88,7 +94,9 @@ export class PluginInstaller {
 
         // If normalized directory exists, remove it
         if (fs.existsSync(normalizedDir)) {
-          console.log(`Removing existing normalized directory: ${normalizedDir}`);
+          console.log(
+            `Removing existing normalized directory: ${normalizedDir}`
+          );
           fs.rmSync(normalizedDir, { recursive: true, force: true });
         }
 
@@ -122,44 +130,56 @@ export class PluginInstaller {
   /**
    * Download and install a plugin from a URL - Theo cách của VS Code
    */
-  private async downloadAndInstallPlugin(pluginName: string, downloadUrl: string): Promise<PluginInfo> {
+  private async downloadAndInstallPlugin(
+    pluginName: string,
+    downloadUrl: string
+  ): Promise<PluginInfo> {
     try {
-      console.log(`Starting download and installation of plugin ${pluginName} from ${downloadUrl}`);
+      console.log(
+        `Starting download and installation of plugin ${pluginName} from ${downloadUrl}`
+      );
 
       // 1. Kiểm tra xem plugin đã được cài đặt chưa
       const existingDir = this.findPluginDirectory(pluginName);
       if (existingDir) {
-        console.log(`Plugin ${pluginName} is already installed at ${existingDir}`);
+        console.log(
+          `Plugin ${pluginName} is already installed at ${existingDir}`
+        );
 
         // Đọc package.json để lấy thông tin plugin
-        const packageJsonPath = path.join(existingDir, 'package.json');
+        const packageJsonPath = path.join(existingDir, "package.json");
         if (fs.existsSync(packageJsonPath)) {
           try {
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+            const packageJson = JSON.parse(
+              fs.readFileSync(packageJsonPath, "utf8")
+            );
             return {
               name: packageJson.name || pluginName,
-              version: packageJson.version || '1.0.0',
+              version: packageJson.version || "1.0.0",
               description: packageJson.description || `Plugin ${pluginName}`,
-              author: packageJson.author || 'Unknown',
-              installed: true
+              author: packageJson.author || "Unknown",
+              installed: true,
             };
           } catch (err) {
-            console.error(`Error reading package.json for existing plugin:`, err);
+            console.error(
+              `Error reading package.json for existing plugin:`,
+              err
+            );
           }
         }
 
         // Trả về thông tin mặc định nếu không đọc được package.json
         return {
           name: pluginName,
-          version: '1.0.0',
+          version: "1.0.0",
           description: `Plugin ${pluginName}`,
-          author: 'Unknown',
-          installed: true
+          author: "Unknown",
+          installed: true,
         };
       }
 
       // 2. Tạo thư mục tạm thời để tải về
-      const tempDir = path.join(app.getPath('temp'), 'plugin-downloads');
+      const tempDir = path.join(app.getPath("temp"), "plugin-downloads");
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
@@ -171,7 +191,9 @@ export class PluginInstaller {
 
       // 4. Kiểm tra file zip
       if (!fs.existsSync(zipPath)) {
-        throw new Error(`Failed to download plugin: ${pluginName}.zip not found`);
+        throw new Error(
+          `Failed to download plugin: ${pluginName}.zip not found`
+        );
       }
 
       const stats = fs.statSync(zipPath);
@@ -185,7 +207,9 @@ export class PluginInstaller {
       let zipPackageJson = null;
       try {
         zipPackageJson = await this.getPackageJsonFromZip(zipPath);
-        console.log(`Read package.json from zip: ${JSON.stringify(zipPackageJson)}`);
+        console.log(
+          `Read package.json from zip: ${JSON.stringify(zipPackageJson)}`
+        );
       } catch (zipError) {
         console.error(`Error reading package.json from zip:`, zipError);
       }
@@ -213,7 +237,7 @@ export class PluginInstaller {
 
       // List extracted files for debugging
       const extractedFiles = fs.readdirSync(pluginDir);
-      console.log(`Extracted files: ${extractedFiles.join(', ')}`);
+      console.log(`Extracted files: ${extractedFiles.join(", ")}`);
 
       // 9. Xóa file zip tạm thời
       try {
@@ -223,7 +247,7 @@ export class PluginInstaller {
       }
 
       // 10. Đọc package.json từ thư mục đã giải nén
-      const packageJsonPath = path.join(pluginDir, 'package.json');
+      const packageJsonPath = path.join(pluginDir, "package.json");
       console.log(`Looking for package.json at ${packageJsonPath}`);
       let packageJsonFound = false;
 
@@ -231,13 +255,19 @@ export class PluginInstaller {
         packageJsonFound = true;
       } else {
         // Tìm package.json trong các thư mục con
-        console.log('package.json not found in root directory, searching subdirectories...');
-        const subdirs = extractedFiles.filter(file =>
+        console.log(
+          "package.json not found in root directory, searching subdirectories..."
+        );
+        const subdirs = extractedFiles.filter((file) =>
           fs.statSync(path.join(pluginDir, file)).isDirectory()
         );
 
         for (const subdir of subdirs) {
-          const subPackageJsonPath = path.join(pluginDir, subdir, 'package.json');
+          const subPackageJsonPath = path.join(
+            pluginDir,
+            subdir,
+            "package.json"
+          );
           if (fs.existsSync(subPackageJsonPath)) {
             console.log(`Found package.json in subdirectory: ${subdir}`);
             // Di chuyển tất cả các file từ thư mục con lên thư mục gốc
@@ -274,11 +304,18 @@ export class PluginInstaller {
       this.updateExtensionsJson(pluginName, true);
 
       // 12. Đọc nội dung package.json
-      const extractedPackageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      console.log(`Package.json content: ${JSON.stringify(extractedPackageJson, null, 2)}`);
+      const extractedPackageJson = JSON.parse(
+        fs.readFileSync(packageJsonPath, "utf-8")
+      );
+      console.log(
+        `Package.json content: ${JSON.stringify(extractedPackageJson, null, 2)}`
+      );
 
       // 13. Cài đặt các dependencies nếu cần
-      if (extractedPackageJson.dependencies && Object.keys(extractedPackageJson.dependencies).length > 0) {
+      if (
+        extractedPackageJson.dependencies &&
+        Object.keys(extractedPackageJson.dependencies).length > 0
+      ) {
         console.log(`Installing dependencies for plugin ${pluginName}`);
         try {
           // Tạo package.json tối thiểu chỉ với các dependencies cần thiết
@@ -292,9 +329,10 @@ export class PluginInstaller {
           } = {
             name: extractedPackageJson.name,
             version: extractedPackageJson.version,
-            description: extractedPackageJson.description || 'Plugin for text editor',
+            description:
+              extractedPackageJson.description || "Plugin for text editor",
             main: extractedPackageJson.main,
-            dependencies: {}
+            dependencies: {},
           };
 
           // Giữ lại scripts nếu có
@@ -303,62 +341,81 @@ export class PluginInstaller {
           }
 
           // Chỉ bao gồm các dependencies cần thiết
-          const essentialDeps = ['pdfmake', 'pdfkit', 'tar', '7zip-bin'];
+          const essentialDeps = ["pdfmake", "pdfkit", "tar", "7zip-bin"];
           for (const dep of essentialDeps) {
-            if (extractedPackageJson.dependencies && extractedPackageJson.dependencies[dep]) {
-              minimalPackageJson.dependencies[dep] = extractedPackageJson.dependencies[dep];
+            if (
+              extractedPackageJson.dependencies &&
+              extractedPackageJson.dependencies[dep]
+            ) {
+              minimalPackageJson.dependencies[dep] =
+                extractedPackageJson.dependencies[dep];
             }
           }
 
           // Nếu là code-runner plugin, đảm bảo có tar và 7zip-bin
-          if (extractedPackageJson.name === 'code-runner') {
-            if (extractedPackageJson.dependencies && extractedPackageJson.dependencies['tar']) {
-              minimalPackageJson.dependencies['tar'] = extractedPackageJson.dependencies['tar'];
+          if (extractedPackageJson.name === "code-runner") {
+            if (
+              extractedPackageJson.dependencies &&
+              extractedPackageJson.dependencies["tar"]
+            ) {
+              minimalPackageJson.dependencies["tar"] =
+                extractedPackageJson.dependencies["tar"];
             } else {
-              minimalPackageJson.dependencies['tar'] = '^6.1.15';
+              minimalPackageJson.dependencies["tar"] = "^6.1.15";
             }
 
-            if (extractedPackageJson.dependencies && extractedPackageJson.dependencies['7zip-bin']) {
-              minimalPackageJson.dependencies['7zip-bin'] = extractedPackageJson.dependencies['7zip-bin'];
+            if (
+              extractedPackageJson.dependencies &&
+              extractedPackageJson.dependencies["7zip-bin"]
+            ) {
+              minimalPackageJson.dependencies["7zip-bin"] =
+                extractedPackageJson.dependencies["7zip-bin"];
             } else {
-              minimalPackageJson.dependencies['7zip-bin'] = '^5.1.1';
+              minimalPackageJson.dependencies["7zip-bin"] = "^5.1.1";
             }
           }
 
           // Bỏ qua dependency electron vì nó đã có trong ứng dụng chính
-          console.log(`Using minimal dependencies: ${JSON.stringify(minimalPackageJson.dependencies)}`);
+          console.log(
+            `Using minimal dependencies: ${JSON.stringify(
+              minimalPackageJson.dependencies
+            )}`
+          );
 
           // Ghi file package.json tối thiểu
           fs.writeFileSync(
-            path.join(pluginDir, 'package.json'),
+            path.join(pluginDir, "package.json"),
             JSON.stringify(minimalPackageJson, null, 2)
           );
 
           // Cài đặt dependencies
-          const { execSync } = require('child_process');
+          const { execSync } = require("child_process");
           console.log(`Running npm install in ${pluginDir}`);
-          execSync('npm install --no-fund --no-audit --loglevel=error', {
+          execSync("npm install --no-fund --no-audit --loglevel=error", {
             cwd: pluginDir,
-            stdio: 'inherit',
-            timeout: 60000 // 60 giây timeout
+            stdio: "inherit",
+            timeout: 60000, // 60 giây timeout
           });
-          console.log('Dependencies installed successfully');
+          console.log("Dependencies installed successfully");
         } catch (npmError) {
-          console.error('Error installing dependencies:', npmError);
-          console.log('Continuing without installing dependencies - plugin may not work correctly');
+          console.error("Error installing dependencies:", npmError);
+          console.log(
+            "Continuing without installing dependencies - plugin may not work correctly"
+          );
           // Tiếp tục ngay cả khi npm install thất bại
         }
       } else {
-        console.log('No dependencies to install');
+        console.log("No dependencies to install");
       }
 
       // 14. Tạo thông tin plugin
       const pluginInfo: PluginInfo = {
         name: extractedPackageJson.name || pluginName,
-        version: extractedPackageJson.version || '1.0.0',
-        description: extractedPackageJson.description || 'No description provided',
-        author: extractedPackageJson.author || 'Unknown',
-        installed: true
+        version: extractedPackageJson.version || "1.0.0",
+        description:
+          extractedPackageJson.description || "No description provided",
+        author: extractedPackageJson.author || "Unknown",
+        installed: true,
       };
 
       console.log(`Plugin info: ${JSON.stringify(pluginInfo)}`);
@@ -371,7 +428,10 @@ export class PluginInstaller {
 
       return pluginInfo;
     } catch (error) {
-      console.error(`Error downloading and installing plugin ${pluginName}:`, error);
+      console.error(
+        `Error downloading and installing plugin ${pluginName}:`,
+        error
+      );
       throw error;
     }
   }
@@ -384,7 +444,9 @@ export class PluginInstaller {
       console.log(`Downloading file from ${url} to ${destination}`);
 
       // Determine protocol (http or https)
-      const protocol = url.startsWith('https:') ? require('https') : require('http');
+      const protocol = url.startsWith("https:")
+        ? require("https")
+        : require("http");
       const file = fs.createWriteStream(destination);
 
       // Create request with proper error handling
@@ -401,7 +463,11 @@ export class PluginInstaller {
 
         // Check for successful response
         if (response.statusCode !== 200) {
-          reject(new Error(`Failed to download file: Server returned status code ${response.statusCode}`));
+          reject(
+            new Error(
+              `Failed to download file: Server returned status code ${response.statusCode}`
+            )
+          );
           return;
         }
 
@@ -409,13 +475,13 @@ export class PluginInstaller {
         response.pipe(file);
 
         // Handle file events
-        file.on('finish', () => {
+        file.on("finish", () => {
           file.close();
           console.log(`Download completed: ${destination}`);
           resolve();
         });
 
-        file.on('error', (err: Error) => {
+        file.on("error", (err: Error) => {
           console.error(`Error writing to file: ${err.message}`);
           fs.unlinkSync(destination);
           reject(err);
@@ -423,7 +489,7 @@ export class PluginInstaller {
       });
 
       // Handle request errors
-      request.on('error', (err: Error) => {
+      request.on("error", (err: Error) => {
         console.error(`Error downloading file: ${err.message}`);
         if (fs.existsSync(destination)) {
           fs.unlinkSync(destination);
@@ -437,7 +503,7 @@ export class PluginInstaller {
         if (fs.existsSync(destination)) {
           fs.unlinkSync(destination);
         }
-        reject(new Error('Download timed out after 30 seconds'));
+        reject(new Error("Download timed out after 30 seconds"));
       });
     });
   }
@@ -455,7 +521,10 @@ export class PluginInstaller {
 
     try {
       // 1. Chuẩn hóa tên plugin
-      const normalizedName = String(pluginName).replace(/(-\d+\.\d+\.\d+)$/, '');
+      const normalizedName = String(pluginName).replace(
+        /(-\d+\.\d+\.\d+)$/,
+        ""
+      );
       console.log(`PluginInstaller: Normalized name: ${normalizedName}`);
 
       // 2. Tìm tất cả các thư mục liên quan
@@ -475,12 +544,13 @@ export class PluginInstaller {
 
       // Tìm các thư mục có phiên bản
       try {
-        const allDirs = fs.readdirSync(this.pluginsDir, { withFileTypes: true })
-          .filter(dirent => dirent.isDirectory())
-          .map(dirent => dirent.name);
+        const allDirs = fs
+          .readdirSync(this.pluginsDir, { withFileTypes: true })
+          .filter((dirent) => dirent.isDirectory())
+          .map((dirent) => dirent.name);
 
         for (const dir of allDirs) {
-          if (dir.startsWith(normalizedName + '-')) {
+          if (dir.startsWith(normalizedName + "-")) {
             const versionedDir = path.join(this.pluginsDir, dir);
             if (!dirsToRemove.includes(versionedDir)) {
               dirsToRemove.push(versionedDir);
@@ -488,10 +558,15 @@ export class PluginInstaller {
           }
         }
       } catch (error) {
-        console.error(`PluginInstaller: Error reading plugins directory:`, error);
+        console.error(
+          `PluginInstaller: Error reading plugins directory:`,
+          error
+        );
       }
 
-      console.log(`PluginInstaller: Directories to remove: ${dirsToRemove.join(', ')}`);
+      console.log(
+        `PluginInstaller: Directories to remove: ${dirsToRemove.join(", ")}`
+      );
 
       // 3. Xóa tất cả các thư mục liên quan
       for (const dir of dirsToRemove) {
@@ -503,7 +578,10 @@ export class PluginInstaller {
           const dirName = path.basename(dir);
           this.installedPlugins.delete(dirName);
         } catch (error) {
-          console.error(`PluginInstaller: Error removing directory ${dir}:`, error);
+          console.error(
+            `PluginInstaller: Error removing directory ${dir}:`,
+            error
+          );
           // Tiếp tục với các thư mục khác
         }
       }
@@ -513,7 +591,10 @@ export class PluginInstaller {
         this.updateExtensionsJson(pluginName, false);
         this.updateExtensionsJson(normalizedName, false);
       } catch (error) {
-        console.error(`PluginInstaller: Error updating extensions.json:`, error);
+        console.error(
+          `PluginInstaller: Error updating extensions.json:`,
+          error
+        );
       }
 
       // 5. Cập nhật danh sách plugin đã cài đặt
@@ -521,7 +602,10 @@ export class PluginInstaller {
 
       return true; // Luôn trả về true để tránh lỗi UI
     } catch (error) {
-      console.error(`PluginInstaller: Error uninstalling plugin ${pluginName}:`, error);
+      console.error(
+        `PluginInstaller: Error uninstalling plugin ${pluginName}:`,
+        error
+      );
       return true; // Luôn trả về true để tránh lỗi UI
     }
   }
@@ -532,7 +616,7 @@ export class PluginInstaller {
   private findPluginDirectory(pluginName: string): string | null {
     try {
       // Normalize plugin name (remove version suffix if present)
-      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
 
       // Kiểm tra trực tiếp với tên plugin
       const exactDir = path.join(this.pluginsDir, pluginName);
@@ -547,23 +631,33 @@ export class PluginInstaller {
       }
 
       // Tìm kiếm trong tất cả các thư mục
-      const allDirs = fs.readdirSync(this.pluginsDir, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
+      const allDirs = fs
+        .readdirSync(this.pluginsDir, { withFileTypes: true })
+        .filter((dirent) => dirent.isDirectory())
+        .map((dirent) => dirent.name);
 
       // Tìm thư mục phù hợp nhất
       for (const dir of allDirs) {
         // Kiểm tra thư mục có phiên bản
-        if (dir.startsWith(normalizedName + '-')) {
+        if (dir.startsWith(normalizedName + "-")) {
           return path.join(this.pluginsDir, dir);
         }
 
         // Kiểm tra package.json để xác định tên plugin
         try {
-          const packageJsonPath = path.join(this.pluginsDir, dir, 'package.json');
+          const packageJsonPath = path.join(
+            this.pluginsDir,
+            dir,
+            "package.json"
+          );
           if (fs.existsSync(packageJsonPath)) {
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-            if (packageJson.name === pluginName || packageJson.name === normalizedName) {
+            const packageJson = JSON.parse(
+              fs.readFileSync(packageJsonPath, "utf8")
+            );
+            if (
+              packageJson.name === pluginName ||
+              packageJson.name === normalizedName
+            ) {
               return path.join(this.pluginsDir, dir);
             }
           }
@@ -584,16 +678,20 @@ export class PluginInstaller {
    */
   private updateExtensionsJson(pluginName: string, isInstalled: boolean): void {
     try {
-      const extensionsJsonPath = path.join(this.pluginsDir, '..', 'extensions.json');
+      const extensionsJsonPath = path.join(
+        this.pluginsDir,
+        "..",
+        "extensions.json"
+      );
       let extensions: { [key: string]: any } = {};
 
       // Đọc file extensions.json nếu tồn tại
       if (fs.existsSync(extensionsJsonPath)) {
         try {
-          const content = fs.readFileSync(extensionsJsonPath, 'utf8');
+          const content = fs.readFileSync(extensionsJsonPath, "utf8");
           extensions = JSON.parse(content);
         } catch (err) {
-          console.error('Error reading extensions.json:', err);
+          console.error("Error reading extensions.json:", err);
           extensions = {};
         }
       }
@@ -601,7 +699,10 @@ export class PluginInstaller {
       // Cập nhật trạng thái plugin
       if (isInstalled) {
         // Thêm plugin vào danh sách đã cài đặt
-        extensions[pluginName] = { enabled: true, installedTimestamp: Date.now() };
+        extensions[pluginName] = {
+          enabled: true,
+          installedTimestamp: Date.now(),
+        };
       } else {
         // Xóa plugin khỏi danh sách đã cài đặt
         if (extensions[pluginName]) {
@@ -610,10 +711,19 @@ export class PluginInstaller {
       }
 
       // Ghi file extensions.json
-      fs.writeFileSync(extensionsJsonPath, JSON.stringify(extensions, null, 2), 'utf8');
-      console.log(`Updated extensions.json for plugin ${pluginName}, installed: ${isInstalled}`);
+      fs.writeFileSync(
+        extensionsJsonPath,
+        JSON.stringify(extensions, null, 2),
+        "utf8"
+      );
+      console.log(
+        `Updated extensions.json for plugin ${pluginName}, installed: ${isInstalled}`
+      );
     } catch (error) {
-      console.error(`Error updating extensions.json for plugin ${pluginName}:`, error);
+      console.error(
+        `Error updating extensions.json for plugin ${pluginName}:`,
+        error
+      );
     }
   }
 
@@ -622,10 +732,10 @@ export class PluginInstaller {
    */
   private async installExportToPdfPlugin(): Promise<PluginInfo> {
     try {
-      console.log('Installing export-to-pdf plugin directly');
+      console.log("Installing export-to-pdf plugin directly");
 
       // Tạo thư mục plugin
-      const pluginDir = path.join(this.pluginsDir, 'export-to-pdf');
+      const pluginDir = path.join(this.pluginsDir, "export-to-pdf");
       console.log(`Creating plugin directory at ${pluginDir}`);
 
       // Xóa thư mục cũ nếu tồn tại
@@ -639,27 +749,27 @@ export class PluginInstaller {
 
       // Tạo file package.json
       const packageJson = {
-        "name": "export-to-pdf",
-        "version": "1.0.0",
-        "description": "Export document to PDF",
-        "main": "index.js",
-        "author": "nhtam",
-        "dependencies": {
-          "pdfkit": "^0.13.0"
+        name: "export-to-pdf",
+        version: "1.0.0",
+        description: "Export document to PDF",
+        main: "index.js",
+        author: "nhtam",
+        dependencies: {
+          pdfkit: "^0.13.0",
         },
-        "menuItems": [
+        menuItems: [
           {
-            "id": "export-to-pdf.exportToPdf",
-            "label": "Export to PDF",
-            "parentMenu": "file",
-            "accelerator": "CmdOrCtrl+E"
-          }
-        ]
+            id: "export-to-pdf.exportToPdf",
+            label: "Export to PDF",
+            parentMenu: "file",
+            accelerator: "CmdOrCtrl+E",
+          },
+        ],
       };
 
       // Ghi file package.json
       fs.writeFileSync(
-        path.join(pluginDir, 'package.json'),
+        path.join(pluginDir, "package.json"),
         JSON.stringify(packageJson, null, 2)
       );
 
@@ -781,36 +891,35 @@ function sendResponse(id, success, message, data = null) {
 `;
 
       // Ghi file index.js
-      fs.writeFileSync(
-        path.join(pluginDir, 'index.js'),
-        indexJs
-      );
+      fs.writeFileSync(path.join(pluginDir, "index.js"), indexJs);
 
       // Cài đặt dependencies
       try {
-        const { execSync } = require('child_process');
+        const { execSync } = require("child_process");
         console.log(`Running npm install in ${pluginDir}`);
-        execSync('npm install --no-fund --no-audit --loglevel=error', {
+        execSync("npm install --no-fund --no-audit --loglevel=error", {
           cwd: pluginDir,
-          stdio: 'inherit',
-          timeout: 60000 // 60 giây timeout
+          stdio: "inherit",
+          timeout: 60000, // 60 giây timeout
         });
-        console.log('Dependencies installed successfully');
+        console.log("Dependencies installed successfully");
       } catch (npmError) {
-        console.error('Error installing dependencies:', npmError);
-        console.log('Continuing without installing dependencies - plugin may not work correctly');
+        console.error("Error installing dependencies:", npmError);
+        console.log(
+          "Continuing without installing dependencies - plugin may not work correctly"
+        );
       }
 
       // Cập nhật file extensions.json
-      this.updateExtensionsJson('export-to-pdf', true);
+      this.updateExtensionsJson("export-to-pdf", true);
 
       // Tạo thông tin plugin
       const pluginInfo: PluginInfo = {
-        name: 'export-to-pdf',
-        version: '1.0.0',
-        description: 'Export document to PDF',
-        author: 'nhtam',
-        installed: true
+        name: "export-to-pdf",
+        version: "1.0.0",
+        description: "Export document to PDF",
+        author: "nhtam",
+        installed: true,
       };
 
       // Lưu thông tin plugin
@@ -819,7 +928,7 @@ function sendResponse(id, success, message, data = null) {
       console.log(`Plugin info: ${JSON.stringify(pluginInfo)}`);
       return pluginInfo;
     } catch (error) {
-      console.error('Error installing export-to-pdf plugin directly:', error);
+      console.error("Error installing export-to-pdf plugin directly:", error);
       throw error;
     }
   }
@@ -837,7 +946,10 @@ function sendResponse(id, success, message, data = null) {
       plugin.installed = true;
     }
 
-    console.log('getInstalledPlugins returning:', plugins.map(p => `${p.name} (installed: ${p.installed})`))
+    console.log(
+      "getInstalledPlugins returning:",
+      plugins.map((p) => `${p.name} (installed: ${p.installed})`)
+    );
     return plugins;
   }
 
@@ -846,13 +958,16 @@ function sendResponse(id, success, message, data = null) {
    */
   public isPluginInstalled(pluginName: string): boolean {
     // Normalize plugin name (remove version suffix if present)
-    const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+    const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
 
     // Refresh the list of installed plugins
     this.refreshInstalledPlugins();
 
     // Check if either the original name or normalized name is installed
-    return this.installedPlugins.has(pluginName) || this.installedPlugins.has(normalizedName);
+    return (
+      this.installedPlugins.has(pluginName) ||
+      this.installedPlugins.has(normalizedName)
+    );
   }
 
   /**
@@ -867,44 +982,56 @@ function sendResponse(id, success, message, data = null) {
       this.ensurePluginsDirectory();
 
       // Read all plugin directories
-      const pluginDirs = fs.readdirSync(this.pluginsDir, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
+      const pluginDirs = fs
+        .readdirSync(this.pluginsDir, { withFileTypes: true })
+        .filter((dirent) => dirent.isDirectory())
+        .map((dirent) => dirent.name);
 
-      console.log(`Found plugin directories: ${pluginDirs.join(', ')}`);
+      console.log(`Found plugin directories: ${pluginDirs.join(", ")}`);
 
       // Process each plugin directory
       for (const pluginDir of pluginDirs) {
         const pluginDirPath = path.join(this.pluginsDir, pluginDir);
-        const packageJsonPath = path.join(pluginDirPath, 'package.json');
+        const packageJsonPath = path.join(pluginDirPath, "package.json");
         console.log(`Checking for package.json at: ${packageJsonPath}`);
 
         if (fs.existsSync(packageJsonPath)) {
           // Process package.json in the root directory
           this.processPackageJson(packageJsonPath, pluginDir);
         } else {
-          console.log(`No package.json found in root directory, searching subdirectories...`);
+          console.log(
+            `No package.json found in root directory, searching subdirectories...`
+          );
 
           // Check for subdirectories that might contain the plugin
           try {
-            const subdirs = fs.readdirSync(pluginDirPath).filter(file => {
+            const subdirs = fs.readdirSync(pluginDirPath).filter((file) => {
               const filePath = path.join(pluginDirPath, file);
               return fs.statSync(filePath).isDirectory();
             });
 
             // Normalize plugin name (remove version suffix if present)
-            const normalizedDirName = pluginDir.replace(/(-\d+\.\d+\.\d+)$/, '');
+            const normalizedDirName = pluginDir.replace(
+              /(-\d+\.\d+\.\d+)$/,
+              ""
+            );
 
             // First, look for a subdirectory with the same name as the plugin
-            const pluginNameSubdir = subdirs.find(dir => dir === normalizedDirName || dir === pluginDir);
-            const subdirsToCheck = pluginNameSubdir ?
-              [pluginNameSubdir, ...subdirs.filter(dir => dir !== pluginNameSubdir)] : subdirs;
+            const pluginNameSubdir = subdirs.find(
+              (dir) => dir === normalizedDirName || dir === pluginDir
+            );
+            const subdirsToCheck = pluginNameSubdir
+              ? [
+                  pluginNameSubdir,
+                  ...subdirs.filter((dir) => dir !== pluginNameSubdir),
+                ]
+              : subdirs;
 
             let foundInSubdir = false;
 
             for (const subdir of subdirsToCheck) {
               const subdirPath = path.join(pluginDirPath, subdir);
-              const subPackageJsonPath = path.join(subdirPath, 'package.json');
+              const subPackageJsonPath = path.join(subdirPath, "package.json");
 
               if (fs.existsSync(subPackageJsonPath)) {
                 console.log(`Found package.json in subdirectory: ${subdir}`);
@@ -917,56 +1044,86 @@ function sendResponse(id, success, message, data = null) {
             }
 
             if (!foundInSubdir) {
-              console.log(`No package.json found in any subdirectory of ${pluginDir}`);
+              console.log(
+                `No package.json found in any subdirectory of ${pluginDir}`
+              );
             }
           } catch (error) {
-            console.error(`Error searching subdirectories of ${pluginDir}:`, error);
+            console.error(
+              `Error searching subdirectories of ${pluginDir}:`,
+              error
+            );
           }
         }
       }
 
-      console.log(`Refreshed installed plugins: ${Array.from(this.installedPlugins.keys()).join(', ')}`);
+      console.log(
+        `Refreshed installed plugins: ${Array.from(
+          this.installedPlugins.keys()
+        ).join(", ")}`
+      );
     } catch (error) {
-      console.error('Error refreshing installed plugins:', error);
+      console.error("Error refreshing installed plugins:", error);
     }
   }
 
   /**
    * Process a package.json file and register the plugin
    */
-  private processPackageJson(packageJsonPath: string, pluginDir: string, subdir?: string): void {
+  private processPackageJson(
+    packageJsonPath: string,
+    pluginDir: string,
+    subdir?: string
+  ): void {
     try {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      console.log(`Found package.json for plugin ${subdir ? `${pluginDir}/${subdir}` : pluginDir}: ${JSON.stringify(packageJson, null, 2)}`);
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+      console.log(
+        `Found package.json for plugin ${
+          subdir ? `${pluginDir}/${subdir}` : pluginDir
+        }: ${JSON.stringify(packageJson, null, 2)}`
+      );
 
       // Normalize plugin name (remove version suffix if present)
       let pluginName = packageJson.name || pluginDir;
-      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
 
       // If the directory name has version but the package.json name doesn't, use the normalized name
-      if (pluginDir.includes(normalizedName) && pluginDir !== normalizedName && !pluginName.includes('-')) {
+      if (
+        pluginDir.includes(normalizedName) &&
+        pluginDir !== normalizedName &&
+        !pluginName.includes("-")
+      ) {
         pluginName = normalizedName;
       }
 
-      console.log(`Using plugin name: ${pluginName} (normalized from ${packageJson.name || pluginDir})`);
+      console.log(
+        `Using plugin name: ${pluginName} (normalized from ${
+          packageJson.name || pluginDir
+        })`
+      );
 
       const pluginInfo: PluginInfo = {
         name: pluginName,
-        version: packageJson.version || '1.0.0',
-        description: packageJson.description || 'No description provided',
-        author: packageJson.author || 'Unknown',
-        installed: true
+        version: packageJson.version || "1.0.0",
+        description: packageJson.description || "No description provided",
+        author: packageJson.author || "Unknown",
+        installed: true,
       };
 
       this.installedPlugins.set(pluginInfo.name, pluginInfo);
 
       // Also register with the directory name if it's different
       if (pluginDir !== pluginInfo.name) {
-        console.log(`Also registering plugin with directory name: ${pluginDir}`);
+        console.log(
+          `Also registering plugin with directory name: ${pluginDir}`
+        );
         this.installedPlugins.set(pluginDir, pluginInfo);
       }
     } catch (error) {
-      console.error(`Error processing package.json at ${packageJsonPath}:`, error);
+      console.error(
+        `Error processing package.json at ${packageJsonPath}:`,
+        error
+      );
     }
   }
 
@@ -978,13 +1135,13 @@ function sendResponse(id, success, message, data = null) {
       console.log(`Finding main script for plugin: ${pluginName}`);
 
       // Normalize plugin name (remove version suffix if present)
-      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
       console.log(`Normalized plugin name: ${normalizedName}`);
 
       // Try both the original name and normalized name
       const pluginDirs = [
         path.join(this.pluginsDir, pluginName),
-        path.join(this.pluginsDir, normalizedName)
+        path.join(this.pluginsDir, normalizedName),
       ];
 
       // Try each plugin directory
@@ -997,26 +1154,34 @@ function sendResponse(id, success, message, data = null) {
         }
 
         // First check for package.json in the root directory
-        const packageJsonPath = path.join(pluginDir, 'package.json');
+        const packageJsonPath = path.join(pluginDir, "package.json");
         console.log(`Looking for package.json at: ${packageJsonPath}`);
 
         if (fs.existsSync(packageJsonPath)) {
-          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-          console.log(`Package.json found with content: ${JSON.stringify(packageJson, null, 2)}`);
+          const packageJson = JSON.parse(
+            fs.readFileSync(packageJsonPath, "utf-8")
+          );
+          console.log(
+            `Package.json found with content: ${JSON.stringify(
+              packageJson,
+              null,
+              2
+            )}`
+          );
 
           // Get main script path from package.json
-          const mainScript = packageJson.main || 'index.js';
+          const mainScript = packageJson.main || "index.js";
           console.log(`Main script from package.json: ${mainScript}`);
 
           // Try multiple possible locations for the main script
           const possiblePaths = [
             path.join(pluginDir, mainScript),
-            path.join(pluginDir, 'dist', mainScript),
-            path.join(pluginDir, 'dist', 'index.js'),
-            path.join(pluginDir, 'src', mainScript),
-            path.join(pluginDir, 'lib', mainScript),
-            path.join(pluginDir, 'build', mainScript),
-            path.join(pluginDir, 'index.js')
+            path.join(pluginDir, "dist", mainScript),
+            path.join(pluginDir, "dist", "index.js"),
+            path.join(pluginDir, "src", mainScript),
+            path.join(pluginDir, "lib", mainScript),
+            path.join(pluginDir, "build", mainScript),
+            path.join(pluginDir, "index.js"),
           ];
 
           for (const mainPath of possiblePaths) {
@@ -1028,7 +1193,9 @@ function sendResponse(id, success, message, data = null) {
           }
 
           // If we still haven't found the main script, search for any .js file
-          console.log('Main script not found in expected locations, searching for any .js file...');
+          console.log(
+            "Main script not found in expected locations, searching for any .js file..."
+          );
           const findJsFiles = (dir: string): string[] => {
             const results: string[] = [];
             const files = fs.readdirSync(dir);
@@ -1039,7 +1206,7 @@ function sendResponse(id, success, message, data = null) {
 
               if (stat.isDirectory()) {
                 results.push(...findJsFiles(filePath));
-              } else if (file.endsWith('.js')) {
+              } else if (file.endsWith(".js")) {
                 results.push(filePath);
               }
             }
@@ -1052,61 +1219,90 @@ function sendResponse(id, success, message, data = null) {
 
           if (jsFiles.length > 0) {
             // Prioritize files with names like 'index.js', 'main.js', or matching the plugin name
-            const priorityFiles = jsFiles.filter(file => {
+            const priorityFiles = jsFiles.filter((file) => {
               const fileName = path.basename(file);
-              return fileName === 'index.js' ||
-                     fileName === 'main.js' ||
-                     fileName === `${normalizedName}.js`;
+              return (
+                fileName === "index.js" ||
+                fileName === "main.js" ||
+                fileName === `${normalizedName}.js`
+              );
             });
 
             if (priorityFiles.length > 0) {
-              console.log(`Using priority file as main script: ${priorityFiles[0]}`);
+              console.log(
+                `Using priority file as main script: ${priorityFiles[0]}`
+              );
               return priorityFiles[0];
             }
 
-            console.log(`Using first found .js file as main script: ${jsFiles[0]}`);
+            console.log(
+              `Using first found .js file as main script: ${jsFiles[0]}`
+            );
             return jsFiles[0];
           }
         } else {
-          console.log(`Package.json not found in root directory, searching subdirectories...`);
+          console.log(
+            `Package.json not found in root directory, searching subdirectories...`
+          );
 
           // Check for subdirectories that might contain the plugin
-          const subdirs = fs.readdirSync(pluginDir).filter(file => {
+          const subdirs = fs.readdirSync(pluginDir).filter((file) => {
             const filePath = path.join(pluginDir, file);
             return fs.statSync(filePath).isDirectory();
           });
 
           // First, look for a subdirectory with the same name as the plugin
-          const pluginNameSubdir = subdirs.find(dir => dir === normalizedName || dir === pluginName);
-          const subdirsToCheck = pluginNameSubdir ? [pluginNameSubdir, ...subdirs.filter(dir => dir !== pluginNameSubdir)] : subdirs;
+          const pluginNameSubdir = subdirs.find(
+            (dir) => dir === normalizedName || dir === pluginName
+          );
+          const subdirsToCheck = pluginNameSubdir
+            ? [
+                pluginNameSubdir,
+                ...subdirs.filter((dir) => dir !== pluginNameSubdir),
+              ]
+            : subdirs;
 
           for (const subdir of subdirsToCheck) {
             const subdirPath = path.join(pluginDir, subdir);
             console.log(`Checking subdirectory: ${subdirPath}`);
 
-            const subPackageJsonPath = path.join(subdirPath, 'package.json');
+            const subPackageJsonPath = path.join(subdirPath, "package.json");
             if (fs.existsSync(subPackageJsonPath)) {
               console.log(`Found package.json in subdirectory: ${subdir}`);
 
               try {
-                const packageJson = JSON.parse(fs.readFileSync(subPackageJsonPath, 'utf-8'));
-                console.log(`Subdirectory package.json content: ${JSON.stringify(packageJson, null, 2)}`);
+                const packageJson = JSON.parse(
+                  fs.readFileSync(subPackageJsonPath, "utf-8")
+                );
+                console.log(
+                  `Subdirectory package.json content: ${JSON.stringify(
+                    packageJson,
+                    null,
+                    2
+                  )}`
+                );
 
                 // Get main script path from package.json
-                const mainScript = packageJson.main || 'index.js';
-                console.log(`Main script from subdirectory package.json: ${mainScript}`);
+                const mainScript = packageJson.main || "index.js";
+                console.log(
+                  `Main script from subdirectory package.json: ${mainScript}`
+                );
 
                 // Check if the main script exists in the subdirectory
                 const mainPath = path.join(subdirPath, mainScript);
                 if (fs.existsSync(mainPath)) {
-                  console.log(`Found main script in subdirectory at: ${mainPath}`);
+                  console.log(
+                    `Found main script in subdirectory at: ${mainPath}`
+                  );
                   return mainPath;
                 }
 
                 // Try index.js in the subdirectory
-                const indexPath = path.join(subdirPath, 'index.js');
+                const indexPath = path.join(subdirPath, "index.js");
                 if (fs.existsSync(indexPath)) {
-                  console.log(`Found index.js in subdirectory at: ${indexPath}`);
+                  console.log(
+                    `Found index.js in subdirectory at: ${indexPath}`
+                  );
                   return indexPath;
                 }
 
@@ -1121,7 +1317,7 @@ function sendResponse(id, success, message, data = null) {
 
                     if (stat.isDirectory()) {
                       results.push(...findJsFiles(filePath));
-                    } else if (file.endsWith('.js')) {
+                    } else if (file.endsWith(".js")) {
                       results.push(filePath);
                     }
                   }
@@ -1132,23 +1328,32 @@ function sendResponse(id, success, message, data = null) {
                 const jsFiles = findJsFiles(subdirPath);
                 if (jsFiles.length > 0) {
                   // Prioritize files with names like 'index.js', 'main.js', or matching the plugin name
-                  const priorityFiles = jsFiles.filter(file => {
+                  const priorityFiles = jsFiles.filter((file) => {
                     const fileName = path.basename(file);
-                    return fileName === 'index.js' ||
-                           fileName === 'main.js' ||
-                           fileName === `${normalizedName}.js`;
+                    return (
+                      fileName === "index.js" ||
+                      fileName === "main.js" ||
+                      fileName === `${normalizedName}.js`
+                    );
                   });
 
                   if (priorityFiles.length > 0) {
-                    console.log(`Using priority file from subdirectory as main script: ${priorityFiles[0]}`);
+                    console.log(
+                      `Using priority file from subdirectory as main script: ${priorityFiles[0]}`
+                    );
                     return priorityFiles[0];
                   }
 
-                  console.log(`Using first found .js file from subdirectory as main script: ${jsFiles[0]}`);
+                  console.log(
+                    `Using first found .js file from subdirectory as main script: ${jsFiles[0]}`
+                  );
                   return jsFiles[0];
                 }
               } catch (error) {
-                console.error(`Error processing package.json in subdirectory ${subdir}:`, error);
+                console.error(
+                  `Error processing package.json in subdirectory ${subdir}:`,
+                  error
+                );
               }
             }
           }
@@ -1174,20 +1379,23 @@ function sendResponse(id, success, message, data = null) {
 
         // Tìm file package.json trong zip
         for (const entry of zipEntries) {
-          if (entry.entryName === 'package.json' || entry.entryName.endsWith('/package.json')) {
+          if (
+            entry.entryName === "package.json" ||
+            entry.entryName.endsWith("/package.json")
+          ) {
             try {
-              const content = entry.getData().toString('utf8');
+              const content = entry.getData().toString("utf8");
               const packageJson = JSON.parse(content);
               return resolve(packageJson);
             } catch (err) {
-              console.error('Error parsing package.json from zip:', err);
+              console.error("Error parsing package.json from zip:", err);
             }
           }
         }
 
         resolve(null); // Không tìm thấy package.json
       } catch (error) {
-        console.error('Error reading zip file:', error);
+        console.error("Error reading zip file:", error);
         resolve(null);
       }
     });
