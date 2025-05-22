@@ -447,9 +447,20 @@ const Editor: React.FC<EditorProps> = ({
   // Thêm useEffect để lắng nghe sự kiện keydown và keyup để đảm bảo không có sự kiện nào đang bị chặn
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Kiểm tra xem editor có focus không
+      // Kiểm tra xem người dùng có đang nhập trong input tìm kiếm của explorer không
+      const searchInput = document.querySelector(
+        '.explorer input[type="text"]'
+      );
+      const isSearchInputActive = document.activeElement === searchInput;
+
+      // Chỉ focus vào editor nếu không đang nhập trong input tìm kiếm
       const editorElement = document.querySelector(".monaco-editor");
-      if (editorElement && document.activeElement !== editorElement) {
+      if (
+        editorElement &&
+        document.activeElement !== editorElement &&
+        !isSearchInputActive &&
+        !document.activeElement?.tagName.toLowerCase().includes("input")
+      ) {
         console.log("Editor does not have focus, focusing it...");
         focusEditor();
       }

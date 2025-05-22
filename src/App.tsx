@@ -25,6 +25,7 @@ import {
   Play,
   Square,
   Folder,
+  Search as SearchIcon,
 } from "lucide-react";
 import { MenuItem } from "./plugin/MenuContribution";
 import path from "path";
@@ -1082,6 +1083,19 @@ const App: React.FC = () => {
   useEffect(() => {
     console.log("File tabs updated, current openFiles:", openFiles);
   }, [openFiles]);
+
+  const handleGlobalSearch = (query: string) => {
+    if (!query.trim() || !selectedFolder) return;
+
+    console.log("Searching for:", query);
+    window.electron.ipcRenderer.send("search-in-files", {
+      query,
+      folder: selectedFolder,
+    });
+
+    // Switch to search tab
+    setActiveTab("search");
+  };
 
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-white">

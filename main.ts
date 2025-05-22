@@ -1760,3 +1760,62 @@ function getFolderStructure(folderPath: string) {
 
   return structure;
 }
+
+// Add this IPC handler for file searching
+ipcMain.on(
+  "search-in-files",
+  async (event, data: { query: string; folder: string }) => {
+    try {
+      const { query, folder } = data;
+      console.log(`Searching for "${query}" in ${folder}`);
+
+      const results: Array<{
+        filePath: string;
+        line: number;
+        preview: string;
+      }> = [];
+
+      // Function to search in a file
+      const searchInFile = (filePath: string) => {
+        try {
+          const content = fs.readFileSync(filePath, "utf-8");
+          const lines = content.split("\n");
+
+          lines.forEach((line, index) => {
+            if (line.toLowerCase().includes(query.toLowerCase())) {
+              results.push({
+                filePath: path.relative(folder, filePath),
+                line: index + 1,
+                preview: line.trim(),
+              });
+            }
+          });
+        } catch (error) {
+          console.error(`Error searching in file ${filePath}:`, error);
+        }
+      };
+
+      // Function to recursively search in directories
+      const searchInDir = (dirPath: string) => {
+        const files = fs.readdirSync(dirPath);
+
+        files.forEach((file) => {
+          const fullPath = path.join(dirPath, file);
+          const stat = fs.statSync(fullPath);
+
+          if (stat.isDirectory()) {
+            searchInDir(fullPath);
+          } else if (stat.isFile()) {
+            searchInFile(fullPath);
+          }
+        });
+      };
+
+      searchInDir(folder);
+      event.reply("search-results", results);
+    } catch (error) {
+      console.error("Error searching in files:", error);
+      event.reply("search-results", []);
+    }
+  }
+);

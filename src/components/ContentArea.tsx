@@ -86,6 +86,9 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   const folderMenuRef = useRef<HTMLDivElement>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<
+    Array<{ filePath: string; line: number; preview: string }>
+  >([]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -130,15 +133,20 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                   <input
                     type="text"
                     placeholder="Search"
-                    className="bg-[#3c3c3c] text-white text-xs pl-8 pr-2 py-1 rounded w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="explorer bg-[#3c3c3c] text-white text-xs pl-8 pr-2 py-1 rounded w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
                   />
                   {searchQuery && (
                     <X
                       size={14}
                       className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer"
-                      onClick={() => setSearchQuery("")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSearchQuery("");
+                      }}
                     />
                   )}
                 </div>
@@ -228,14 +236,42 @@ const ContentArea: React.FC<ContentAreaProps> = ({
         );
       case "search":
         return (
-          <div className="p-2">
-            <div className="flex flex-col items-center justify-between">
-              <span className="text-white">Search</span>
+          <div className="p-2 h-full flex flex-col">
+            <div className="flex items-center mb-2">
+              <Search className="h-4 w-4 mr-2 text-gray-400" />
               <input
                 type="text"
                 className="w-full p-2 bg-gray-800 text-white rounded-md"
-                placeholder="Search..."
+                placeholder="Search in files..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && handleSearchInFiles(searchQuery)
+                }
               />
+              {searchQuery && (
+                <X
+                  size={14}
+                  className="ml-2 text-gray-400 hover:text-white cursor-pointer"
+                  onClick={() => setSearchQuery("")}
+                />
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {searchResults.map((result, index) => (
+                <div
+                  key={index}
+                  className="p-2 hover:bg-gray-700 cursor-pointer"
+                  onClick={() =>
+                    handleSearchResultClick(result.filePath, result.line)
+                  }
+                >
+                  <div className="text-sm text-blue-400">{result.filePath}</div>
+                  <div className="text-xs text-gray-300">
+                    Line {result.line}: {result.preview}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         );
@@ -481,7 +517,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   };
 
   const toggleRootFolder = () => {
-    setShowChildren((prev) => !prev);
+    setShowChildren(!showChildren);
   };
 
   // Hàm lấy biểu tượng cho từng loại file
@@ -972,27 +1008,27 @@ const ContentArea: React.FC<ContentAreaProps> = ({
     if (selectedFolder) {
       console.log("Refreshing folder structure for:", selectedFolder);
 
+      // Bắt đầu hiệu ứng xoay
+      setIsRefreshing(true);
+
       // Kiểm tra xem selectedFolder có phải là đường dẫn đầy đủ không
-      // Nếu chỉ là tên thư mục, không làm mới mà chỉ log lỗi
       if (!selectedFolder.includes("\\") && !selectedFolder.includes("/")) {
         console.error("Selected folder is not a full path:", selectedFolder);
+        setIsRefreshing(false);
         return;
       }
 
-      // Thêm xử lý lỗi khi thư mục không tồn tại
-      window.electron.ipcRenderer.send(
-        "refresh-folder-structure",
-        selectedFolder
-      );
-      window.electron.ipcRenderer.once(
-        "folder-structure-error",
-        (event, error) => {
-          console.error("Error refreshing folder structure:", error);
-          // Chỉ log lỗi, không mở hộp thoại chọn thư mục
-        }
-      );
-    } else {
-      console.error("No folder selected");
+      // Lấy thư mục gốc (thư mục cha đầu tiên đã mở)
+      const rootFolder = folderStructure?.path || selectedFolder;
+
+      // Gửi yêu cầu làm mới với thư mục gốc để giữ nguyên cấu trúc
+      window.electron.ipcRenderer.send("refresh-folder-structure", rootFolder);
+      console.log("Refreshing from root folder:", rootFolder);
+
+      // Dừng hiệu ứng xoay sau 3 giây
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 1000);
     }
   };
 
