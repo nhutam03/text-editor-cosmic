@@ -80,7 +80,8 @@ const ContentArea: React.FC<ContentAreaProps> = ({
     useState<FolderStructureItem | null>(null);
   const [isRenaming, setIsRenaming] = useState<string | null>(null); // Lưu đường dẫn của file/thư mục đang đổi tên
   const [newName, setNewName] = useState<string>(""); // Tên mới khi đổi tên
-  const [searchQuery, setSearchQuery] = useState<string>(""); // Tìm kiếm trong explorer
+  const [explorerSearchQuery, setExplorerSearchQuery] = useState<string>(""); // Tìm kiếm trong explorer
+  const [globalSearchQuery, setGlobalSearchQuery] = useState<string>(""); // Tìm kiếm nội dung trong files
   const renameInputRef = useRef<HTMLInputElement>(null);
   const [showFolderMenu, setShowFolderMenu] = useState<boolean>(false);
   const folderMenuRef = useRef<HTMLDivElement>(null);
@@ -143,21 +144,18 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                   />
                   <input
                     type="text"
-                    placeholder="Search in files..."
+                    placeholder="Tìm trong explorer..."
                     className="explorer bg-[#3c3c3c] text-white text-xs pl-8 pr-2 py-1 rounded w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={searchQuery}
-                    onChange={(e) => handleSearch(e.target.value)}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && handleSearchInFiles(searchQuery)
-                    }
+                    value={explorerSearchQuery}
+                    onChange={(e) => handleExplorerSearch(e.target.value)}
                   />
-                  {searchQuery && (
+                  {explorerSearchQuery && (
                     <X
                       size={14}
                       className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSearchQuery("");
+                        setExplorerSearchQuery("");
                       }}
                     />
                   )}
@@ -256,18 +254,18 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                 <input
                   type="text"
                   className="w-full p-2 bg-[#3c3c3c] text-white rounded-md text-sm"
-                  placeholder="Search in files..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Tìm kiếm trong files..."
+                  value={globalSearchQuery}
+                  onChange={(e) => setGlobalSearchQuery(e.target.value)}
                   onKeyDown={(e) =>
-                    e.key === "Enter" && handleSearchInFiles(searchQuery)
+                    e.key === "Enter" && handleGlobalSearch(globalSearchQuery)
                   }
                 />
-                {searchQuery && (
+                {globalSearchQuery && (
                   <X
                     size={14}
                     className="ml-2 text-gray-400 hover:text-white cursor-pointer"
-                    onClick={() => setSearchQuery("")}
+                    onClick={() => setGlobalSearchQuery("")}
                   />
                 )}
               </div>
@@ -285,7 +283,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                     className={`cursor-pointer hover:text-white ${
                       isSearching ? "animate-spin text-blue-400" : ""
                     }`}
-                    onClick={() => handleSearchInFiles(searchQuery)}
+                    onClick={() => handleGlobalSearch(globalSearchQuery)}
                   />
                   <button className="hover:text-white">
                     <ChevronDown size={14} />
@@ -316,7 +314,10 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                       {/* Header của file */}
                       <div
                         className="flex items-center text-sm cursor-pointer hover:bg-[#2a2d2e] p-1"
-                        onClick={() => toggleSearchFileExpand(file.filePath)}
+                        onClick={() => {
+                          toggleSearchFileExpand(file.filePath);
+                          handleSearchResultClick(file.filePath, 1);
+                        }}
                       >
                         {expandedSearchFiles.has(file.filePath) ? (
                           <ChevronDown
@@ -346,9 +347,14 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                           <div
                             key={`${file.filePath}-${line.line}-${index}`}
                             className="pl-6 py-1 text-sm hover:bg-[#2a2d2e] cursor-pointer flex"
-                            onClick={() =>
-                              handleSearchResultClick(file.filePath, line.line)
-                            }
+                            onClick={() => {
+                              console.log(
+                                "Bấm vào kết quả tìm kiếm:",
+                                file.filePath,
+                                line.line
+                              );
+                              handleSearchResultClick(file.filePath, line.line);
+                            }}
                           >
                             <span className="text-gray-500 mr-2 min-w-[3rem] text-right">
                               {line.line}:
@@ -359,7 +365,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                     </div>
                   ))}
                 </div>
-              ) : searchQuery ? (
+              ) : globalSearchQuery ? (
                 <div className="text-gray-400 text-sm">
                   Không tìm thấy kết quả
                 </div>
@@ -1129,11 +1135,27 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   };
 
   // Hàm tìm kiếm trong explorer
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
+  const handleExplorerSearch = (query: string) => {
+    setExplorerSearchQuery(query);
+    // Chỉ lọc files trong explorer, không gửi yêu cầu tìm kiếm đến main process
   };
 
-  // Hàm lọc kết quả tìm kiếm
+  // Hàm tìm kiếm toàn cục
+  const handleGlobalSearch = (query: string) => {
+    setGlobalSearchQuery(query);
+    if (!query.trim() || !selectedFolder) return;
+
+    setIsSearching(true);
+    console.log("Đang tìm kiếm nội dung:", query);
+
+    // Gửi yêu cầu tìm kiếm đến main process
+    window.electron.ipcRenderer.send("search-in-files", {
+      query,
+      folder: selectedFolder,
+    });
+  };
+
+  // Hàm lọc kết quả tìm kiếm trong explorer
   const filterItems = (
     node: FolderStructureItem,
     query: string
@@ -1171,9 +1193,9 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   const renderFolderOrFiles = (node: FolderStructureItem) => {
     if (!node) return null;
 
-    // Nếu đang tìm kiếm, lọc kết quả
-    if (searchQuery.trim()) {
-      const filteredNode = filterItems(node, searchQuery);
+    // Nếu đang tìm kiếm trong explorer, lọc kết quả
+    if (explorerSearchQuery.trim()) {
+      const filteredNode = filterItems(node, explorerSearchQuery);
       if (!filteredNode) return null;
       // Mở rộng tất cả các thư mục khi tìm kiếm
       if (
@@ -1764,17 +1786,32 @@ const ContentArea: React.FC<ContentAreaProps> = ({
 
   // Hàm xử lý khi click vào kết quả tìm kiếm
   const handleSearchResultClick = (filePath: string, line: number) => {
-    // Tạo đường dẫn đầy đủ
-    const fullPath = selectedFolder
+    console.log(
+      "Đang mở file từ kết quả tìm kiếm:",
+      filePath,
+      "tại dòng:",
+      line
+    );
+
+    // Đảm bảo đường dẫn đầy đủ
+    const fullPath = path.isAbsolute(filePath)
+      ? filePath
+      : selectedFolder
       ? path.join(selectedFolder, filePath)
       : filePath;
 
-    // Gọi hàm onFileSelect để mở file
-    onFileSelect(fullPath);
+    console.log("Đường dẫn đầy đủ:", fullPath);
 
-    // Thông báo cho editor di chuyển đến dòng cụ thể
-    // Bạn cần triển khai thêm logic để di chuyển đến dòng cụ thể trong editor
-    window.electron.ipcRenderer.send("goto-line", { filePath: fullPath, line });
+    // Gọi trực tiếp đến main process để mở file
+    window.electron.ipcRenderer.send("open-file-request", fullPath);
+
+    // Sau khi file được mở, di chuyển đến dòng cụ thể
+    setTimeout(() => {
+      window.electron.ipcRenderer.send("goto-line", {
+        filePath: fullPath,
+        line,
+      });
+    }, 500);
   };
 
   return (
