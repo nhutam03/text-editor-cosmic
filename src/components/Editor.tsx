@@ -115,6 +115,198 @@ const Editor: React.FC<EditorProps> = ({
   const handleEditorDidMount = (editor: any, monacoInstance: any) => {
     setEditor(editor);
 
+    // Cấu hình HTML snippets và autocomplete
+    if (monacoInstance) {
+      // Đăng ký HTML completion provider
+      monacoInstance.languages.registerCompletionItemProvider('html', {
+        provideCompletionItems: (model: any, position: any) => {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn
+          };
+
+          const suggestions = [
+            {
+              label: '!',
+              kind: monacoInstance.languages.CompletionItemKind.Snippet,
+              insertText: [
+                '<!DOCTYPE html>',
+                '<html lang="en">',
+                '<head>',
+                '    <meta charset="UTF-8">',
+                '    <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+                '    <title>${1:Document}</title>',
+                '</head>',
+                '<body>',
+                '    ${2}',
+                '</body>',
+                '</html>'
+              ].join('\n'),
+              insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'HTML5 template',
+              range: range
+            },
+            {
+              label: 'div',
+              kind: monacoInstance.languages.CompletionItemKind.Snippet,
+              insertText: '<div${1}>\n    ${2}\n</div>',
+              insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Div element',
+              range: range
+            },
+            {
+              label: 'p',
+              kind: monacoInstance.languages.CompletionItemKind.Snippet,
+              insertText: '<p${1}>${2}</p>',
+              insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Paragraph element',
+              range: range
+            },
+            {
+              label: 'a',
+              kind: monacoInstance.languages.CompletionItemKind.Snippet,
+              insertText: '<a href="${1}"${2}>${3}</a>',
+              insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Anchor element',
+              range: range
+            },
+            {
+              label: 'img',
+              kind: monacoInstance.languages.CompletionItemKind.Snippet,
+              insertText: '<img src="${1}" alt="${2}"${3}>',
+              insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Image element',
+              range: range
+            }
+          ];
+
+          return { suggestions };
+        }
+      });
+
+      // Đăng ký CSS completion provider
+      monacoInstance.languages.registerCompletionItemProvider('css', {
+        provideCompletionItems: (model: any, position: any) => {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn
+          };
+
+          const suggestions = [
+            {
+              label: 'display',
+              kind: monacoInstance.languages.CompletionItemKind.Property,
+              insertText: 'display: ${1|block,inline,inline-block,flex,grid,none|};',
+              insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Display property',
+              range: range
+            },
+            {
+              label: 'flex',
+              kind: monacoInstance.languages.CompletionItemKind.Snippet,
+              insertText: [
+                'display: flex;',
+                'justify-content: ${1|flex-start,center,flex-end,space-between,space-around|};',
+                'align-items: ${2|flex-start,center,flex-end,stretch|};'
+              ].join('\n'),
+              insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Flexbox layout',
+              range: range
+            }
+          ];
+
+          return { suggestions };
+        }
+      });
+
+      // Đăng ký JavaScript/TypeScript completion provider
+      const jsLanguages = ['javascript', 'typescript', 'javascriptreact', 'typescriptreact'];
+      jsLanguages.forEach(lang => {
+        monacoInstance.languages.registerCompletionItemProvider(lang, {
+          provideCompletionItems: (model: any, position: any) => {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+              startLineNumber: position.lineNumber,
+              endLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endColumn: word.endColumn
+            };
+
+            const suggestions = [
+              {
+                label: 'log',
+                kind: monacoInstance.languages.CompletionItemKind.Snippet,
+                insertText: 'console.log(${1});',
+                insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                documentation: 'Console log',
+                range: range
+              },
+              {
+                label: 'func',
+                kind: monacoInstance.languages.CompletionItemKind.Snippet,
+                insertText: [
+                  'function ${1:functionName}(${2}) {',
+                  '    ${3}',
+                  '}'
+                ].join('\n'),
+                insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                documentation: 'Function declaration',
+                range: range
+              },
+              {
+                label: 'arrow',
+                kind: monacoInstance.languages.CompletionItemKind.Snippet,
+                insertText: 'const ${1:functionName} = (${2}) => {${3}};',
+                insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                documentation: 'Arrow function',
+                range: range
+              },
+              {
+                label: 'if',
+                kind: monacoInstance.languages.CompletionItemKind.Snippet,
+                insertText: [
+                  'if (${1:condition}) {',
+                  '    ${2}',
+                  '}'
+                ].join('\n'),
+                insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                documentation: 'If statement',
+                range: range
+              },
+              {
+                label: 'for',
+                kind: monacoInstance.languages.CompletionItemKind.Snippet,
+                insertText: [
+                  'for (let ${1:i} = 0; ${1:i} < ${2:array}.length; ${1:i}++) {',
+                  '    ${3}',
+                  '}'
+                ].join('\n'),
+                insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                documentation: 'For loop',
+                range: range
+              },
+              {
+                label: 'foreach',
+                kind: monacoInstance.languages.CompletionItemKind.Snippet,
+                insertText: '${1:array}.forEach((${2:item}) => {${3}});',
+                insertTextRules: monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                documentation: 'ForEach loop',
+                range: range
+              }
+            ];
+
+            return { suggestions };
+          }
+        });
+      });
+    }
+
     editor.onDidChangeCursorPosition((e: any) => {
       setStats((prev) => ({
         ...prev,
@@ -720,6 +912,47 @@ const Editor: React.FC<EditorProps> = ({
               renderControlCharacters: true,
               guides: { indentation: true },
               fixedOverflowWidgets: true,
+              // Autocomplete và IntelliSense settings
+              quickSuggestions: {
+                other: true,
+                comments: true,
+                strings: true
+              },
+              suggestOnTriggerCharacters: true,
+              acceptSuggestionOnCommitCharacter: true,
+              acceptSuggestionOnEnter: "on",
+              tabCompletion: "on",
+              wordBasedSuggestions: "allDocuments",
+              parameterHints: {
+                enabled: true
+              },
+              suggest: {
+                showKeywords: true,
+                showSnippets: true,
+                showClasses: true,
+                showFunctions: true,
+                showVariables: true,
+                showModules: true,
+                showProperties: true,
+                showEvents: true,
+                showOperators: true,
+                showUnits: true,
+                showValues: true,
+                showConstants: true,
+                showEnums: true,
+                showEnumMembers: true,
+                showColors: true,
+                showFiles: true,
+                showReferences: true,
+                showFolders: true,
+                showTypeParameters: true,
+                showIssues: true,
+                showUsers: true,
+                showWords: true
+              },
+              snippetSuggestions: "top",
+              suggestSelection: "first",
+              tabIndex: 0
             }}
           />
         ) : (
