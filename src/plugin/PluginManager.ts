@@ -3160,6 +3160,80 @@ connectToEditor();
   }
 
   /**
+   * Thông báo cho tất cả plugin khi nội dung file thay đổi
+   */
+  public notifyContentChanged(content: string, filePath: string): void {
+    const message = {
+      type: "content-update",
+      payload: {
+        content,
+        filePath
+      }
+    };
+
+    this.plugins.forEach((plugin, pluginName) => {
+      try {
+        // Enhanced socket state checking
+        if (plugin.socket && !plugin.socket.destroyed && plugin.socket.writable) {
+          plugin.socket.write(JSON.stringify(message) + '\n');
+          console.log(`Sent content-update to plugin: ${pluginName}`);
+        } else {
+          console.warn(`Cannot send content-update to plugin ${pluginName}: socket is not writable`);
+          // Remove the plugin if socket is not usable
+          if (plugin.socket && plugin.socket.destroyed) {
+            console.log(`Removing plugin ${pluginName} due to destroyed socket`);
+            this.handlePluginDisconnect(plugin.socket);
+          }
+        }
+      } catch (error) {
+        console.error(`Error sending content-update to plugin ${pluginName}:`, error);
+        // If it's a socket error, handle the disconnection
+        if (error instanceof Error && error.message.includes('ERR_SOCKET_CLOSED')) {
+          console.log(`Handling socket closed error for plugin ${pluginName}`);
+          this.handlePluginDisconnect(plugin.socket);
+        }
+      }
+    });
+  }
+
+  /**
+   * Thông báo cho tất cả plugin khi file được mở
+   */
+  public notifyFileOpened(content: string, filePath: string): void {
+    const message = {
+      type: "file-opened",
+      payload: {
+        content,
+        filePath
+      }
+    };
+
+    this.plugins.forEach((plugin, pluginName) => {
+      try {
+        // Enhanced socket state checking
+        if (plugin.socket && !plugin.socket.destroyed && plugin.socket.writable) {
+          plugin.socket.write(JSON.stringify(message) + '\n');
+          console.log(`Sent file-opened to plugin: ${pluginName}`);
+        } else {
+          console.warn(`Cannot send file-opened to plugin ${pluginName}: socket is not writable`);
+          // Remove the plugin if socket is not usable
+          if (plugin.socket && plugin.socket.destroyed) {
+            console.log(`Removing plugin ${pluginName} due to destroyed socket`);
+            this.handlePluginDisconnect(plugin.socket);
+          }
+        }
+      } catch (error) {
+        console.error(`Error sending file-opened to plugin ${pluginName}:`, error);
+        // If it's a socket error, handle the disconnection
+        if (error instanceof Error && error.message.includes('ERR_SOCKET_CLOSED')) {
+          console.log(`Handling socket closed error for plugin ${pluginName}`);
+          this.handlePluginDisconnect(plugin.socket);
+        }
+      }
+    });
+  }
+
+  /**
    * Xử lý thông điệp thực thi hành động menu
    */
   private handleExecuteMenuActionMessage(
@@ -3313,16 +3387,16 @@ class PluginConnection {
     message: PluginMessage,
     callback?: (response: ResponseMessage) => void
   ): void {
-    // Kiểm tra xem socket có còn mở không
-    if (!this.socket || this.socket.destroyed || this.socket.readyState !== 'open') {
-      console.error('Cannot send message: socket is closed or destroyed');
+    // Enhanced socket state checking
+    if (!this.socket || this.socket.destroyed || !this.socket.writable || this.socket.readyState !== 'open') {
+      console.error('Cannot send message: socket is closed, destroyed, or not writable');
       if (callback) {
         callback({
           id: '',
           type: MessageType.RESPONSE,
           payload: {
             success: false,
-            message: 'Plugin connection is closed'
+            message: 'Plugin connection is closed or not writable'
           }
         });
       }
@@ -3354,12 +3428,23 @@ class PluginConnection {
     }
 
     try {
+      // Double-check socket state before writing
+      if (!this.socket.writable) {
+        throw new Error('Socket is not writable');
+      }
+
       // Gửi thông điệp với newline để đảm bảo plugin có thể parse
       const messageStr = JSON.stringify(messageWithId) + '\n';
       this.socket.write(messageStr);
       console.log(`Message sent to plugin: ${messageWithId.type} (ID: ${id})`);
     } catch (error: any) {
       console.error('Error writing to socket:', error);
+
+      // Handle socket closed errors specifically
+      if (error.message && error.message.includes('ERR_SOCKET_CLOSED')) {
+        console.log('Socket closed error detected in sendMessage');
+      }
+
       // Xóa callback nếu gửi thất bại
       if (callback) {
         this.responseCallbacks.delete(id);

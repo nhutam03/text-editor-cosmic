@@ -13,6 +13,26 @@ import fs from "fs";
 import { OpenDialogReturnValue } from "electron";
 import { PluginManager } from "./src/plugin/PluginManager";
 import { AIService } from "./src/services/ai-service";
+
+// Add uncaught exception handler to prevent crashes
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+
+  // Log socket-related errors specifically
+  if (error.message && error.message.includes('ERR_SOCKET_CLOSED')) {
+    console.error('Socket closed error detected - this is usually due to plugin disconnection');
+    // Don't exit the process for socket errors, just log them
+    return;
+  }
+
+  // For other errors, log but don't crash the application
+  console.error('Non-socket error detected:', error);
+});
+
+// Add unhandled rejection handler
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 // Load environment variables from .env file
 // This handles both development and production environments
 function loadEnvVariables() {
@@ -213,8 +233,67 @@ app.whenReady().then(async () => {
     // Tạo cửa sổ chính trước
     mainWindow = createWindow();
 
-    // Đăng ký tất cả IPC handlers TRƯỚC khi khởi tạo PluginManager
-    //registerAllIpcHandlers();
+    // Đăng ký các IPC handlers quan trọng TRƯỚC khi khởi tạo PluginManager
+    console.log("Registering critical IPC handlers...");
+
+    // Lấy danh sách plugin đã cài đặt - Đảm bảo không có plugin trùng lặp
+    ipcMain.handle("get-plugins", async () => {
+      try {
+        if (!pluginManager) {
+          console.warn("PluginManager not initialized yet, returning empty array");
+          return [];
+        }
+        // Lấy danh sách plugin
+        const plugins = pluginManager.getPlugins();
+
+        // Tạo Map để lọc các plugin trùng lặp dựa trên tên chuẩn hóa
+        const uniquePlugins = new Map<string, string>();
+
+        // Lọc các plugin trùng lặp
+        for (const plugin of plugins) {
+          if (!plugin || !plugin.name) continue;
+
+          // Chuẩn hóa tên plugin
+          const normalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, "");
+
+          // Chỉ giữ lại plugin mới nhất cho mỗi tên chuẩn hóa
+          if (!uniquePlugins.has(normalizedName)) {
+            uniquePlugins.set(normalizedName, plugin.name);
+          }
+        }
+
+        // Trả về danh sách tên plugin duy nhất
+        return Array.from(uniquePlugins.values());
+      } catch (error) {
+        console.error("Error in get-plugins handler:", error);
+        return [];
+      }
+    });
+
+    // Lấy danh sách menu item cho menu cha cụ thể
+    ipcMain.handle("get-menu-items", async (_event, parentMenu: string) => {
+      try {
+        if (!pluginManager) {
+          console.warn("PluginManager not initialized yet, returning empty array");
+          return [];
+        }
+        const menuItems = pluginManager.getMenuItemsForParent(parentMenu);
+        console.log(
+          `Menu items for ${parentMenu}:`,
+          menuItems.map((item) => ({
+            id: item.id,
+            label: item.label,
+            pluginId: item.pluginId,
+          }))
+        );
+        return menuItems;
+      } catch (error) {
+        console.error(`Error getting menu items for ${parentMenu}:`, error);
+        return [];
+      }
+    });
+
+    console.log("Critical IPC handlers registered successfully");
 
     // Đợi cửa sổ được tạo hoàn toàn
     await new Promise<void>((resolve) => {
@@ -309,6 +388,11 @@ app.whenReady().then(async () => {
           contentLength: content.length,
         });
         event.sender.send("file-opened", { content, fileName, filePath });
+
+        // Thông báo cho plugin khi file được mở
+        if (pluginManager) {
+          pluginManager.notifyFileOpened(content, filePath);
+        }
       }
     } catch (error: any) {
       const errorMessage =
@@ -353,6 +437,11 @@ app.whenReady().then(async () => {
         filePath: absolutePath,
         fileName,
       });
+
+      // Thông báo cho plugin khi file được mở
+      if (pluginManager) {
+        pluginManager.notifyFileOpened(content, absolutePath);
+      }
     } catch (error: any) {
       console.error("Lỗi khi mở file:", error);
       const errorMessage =
@@ -533,30 +622,7 @@ app.whenReady().then(async () => {
     }
   );
 
-  // Lấy danh sách plugin đã cài đặt - Đảm bảo không có plugin trùng lặp
-  ipcMain.handle("get-plugins", async () => {
-    // Lấy danh sách plugin
-    const plugins = pluginManager.getPlugins();
 
-    // Tạo Map để lọc các plugin trùng lặp dựa trên tên chuẩn hóa
-    const uniquePlugins = new Map<string, string>();
-
-    // Lọc các plugin trùng lặp
-    for (const plugin of plugins) {
-      if (!plugin || !plugin.name) continue;
-
-      // Chuẩn hóa tên plugin
-      const normalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, "");
-
-      // Chỉ giữ lại plugin mới nhất cho mỗi tên chuẩn hóa
-      if (!uniquePlugins.has(normalizedName)) {
-        uniquePlugins.set(normalizedName, plugin.name);
-      }
-    }
-
-    // Trả về danh sách tên plugin duy nhất
-    return Array.from(uniquePlugins.values());
-  });
 
   // Handle renaming a file or folder
   ipcMain.on(
@@ -851,7 +917,7 @@ app.whenReady().then(async () => {
     }
   );
 
-    // Kiểm tra trạng thái cài đặt của plugin - Sử dụng TypeScript đúng cách
+    // Kiểm tra trạng thái cài đặt của plugin - Cải thiện để xử lý nhiều biến thể tên
     ipcMain.handle("check-plugin-status", async (event, pluginName: string): Promise<{ pluginName: string; isInstalled: boolean; error?: string }> => {
         try {
             if (typeof pluginName !== 'string') {
@@ -859,8 +925,24 @@ app.whenReady().then(async () => {
                 return { pluginName: String(pluginName), isInstalled: false, error: 'Invalid plugin name' };
             }
 
+        console.log(`Main process: Checking plugin status for: ${pluginName}`);
+
         const plugins = pluginManager.getPlugins();
         const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
+
+        // Tạo danh sách các biến thể tên có thể có
+        const nameVariants = [
+          pluginName,
+          normalizedName,
+          pluginName.replace(/_/g, '-'),
+          pluginName.replace(/-/g, '_'),
+          normalizedName.replace(/_/g, '-'),
+          normalizedName.replace(/-/g, '_'),
+          pluginName.toLowerCase(),
+          normalizedName.toLowerCase()
+        ];
+
+        console.log(`Main process: Checking name variants: ${nameVariants.join(', ')}`);
 
         const isInstalled = plugins.some((p) => {
           if (!p || !p.name) return false;
@@ -870,14 +952,23 @@ app.whenReady().then(async () => {
               ? p.name.replace(/(-\d+\.\d+\.\d+)$/, "")
               : String(p.name);
 
-          return (
-            p.name === pluginName ||
-            p.name === normalizedName ||
-            pNormalizedName === pluginName ||
-            pNormalizedName === normalizedName
-          );
+          // Tạo biến thể tên cho plugin hiện tại
+          const pNameVariants = [
+            p.name,
+            pNormalizedName,
+            p.name.replace(/_/g, '-'),
+            p.name.replace(/-/g, '_'),
+            pNormalizedName.replace(/_/g, '-'),
+            pNormalizedName.replace(/-/g, '_'),
+            p.name.toLowerCase(),
+            pNormalizedName.toLowerCase()
+          ];
+
+          // Kiểm tra xem có biến thể nào khớp không
+          return nameVariants.some(variant => pNameVariants.includes(variant));
         });
 
+        console.log(`Main process: Plugin ${pluginName} installation status: ${isInstalled}`);
         return { pluginName, isInstalled };
       } catch (error: unknown) {
         const errorMessage =
@@ -1181,24 +1272,7 @@ app.whenReady().then(async () => {
     }
   );
 
-  // Lấy danh sách menu item cho menu cha cụ thể
-  ipcMain.handle("get-menu-items", async (_event, parentMenu: string) => {
-    try {
-      const menuItems = pluginManager.getMenuItemsForParent(parentMenu);
-      console.log(
-        `Menu items for ${parentMenu}:`,
-        menuItems.map((item) => ({
-          id: item.id,
-          label: item.label,
-          pluginId: item.pluginId,
-        }))
-      );
-      return menuItems;
-    } catch (error) {
-      console.error(`Error getting menu items for ${parentMenu}:`, error);
-      return [];
-    }
-  });
+
 
   // Thực thi plugin trực tiếp (cho AI Chat) - Với xử lý AI Assistant tích hợp
   ipcMain.on(
@@ -1850,6 +1924,18 @@ ipcMain.on("auto-save-file", async (event, data: { content: string; filePath: st
     }
   } catch (error: any) {
     console.error(`Error auto-saving file ${data.filePath}:`, error);
+  }
+});
+
+// Xử lý thông báo thay đổi nội dung từ renderer để gửi đến plugin
+ipcMain.on("content-changed", (event, data: { content: string; filePath: string }) => {
+  try {
+    if (pluginManager && data.filePath) {
+      console.log(`Content changed for file: ${data.filePath}`);
+      pluginManager.notifyContentChanged(data.content, data.filePath);
+    }
+  } catch (error) {
+    console.error("Error notifying plugins of content change:", error);
   }
 });
 

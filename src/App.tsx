@@ -87,6 +87,12 @@ const App: React.FC = () => {
         // Content matches original, remove from modified list
         setModifiedFiles(modifiedFiles.filter((file) => file !== activeFile));
       }
+
+      // Thông báo cho plugin khi nội dung thay đổi
+      window.electron.ipcRenderer.send("content-changed", {
+        content,
+        filePath: activeFile
+      });
     }
   };
   const handleFileSelect = (filePath: string) => {

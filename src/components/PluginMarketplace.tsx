@@ -297,8 +297,27 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
         if (result.success) {
           console.log(`PluginMarketplace: Plugin ${pluginName} installed successfully`);
 
-          // Note: Success handling is now done via event listeners
-          // The success message will be set by the onPluginInstallSuccess event handler
+          // Reload plugins to update the UI
+          await loadPlugins();
+
+          // Cập nhật trạng thái plugin trong danh sách hiện tại
+          setPlugins(prevPlugins =>
+            prevPlugins.map(plugin => {
+              const pluginNormalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, '');
+              if (plugin.name === pluginName ||
+                  plugin.name === normalizedName ||
+                  pluginNormalizedName === pluginName ||
+                  pluginNormalizedName === normalizedName) {
+                return { ...plugin, installed: true };
+              }
+              return plugin;
+            })
+          );
+
+          setSuccess(`Plugin ${normalizedName} installed successfully!`);
+
+          // Clear success message after 3 seconds
+          setTimeout(() => setSuccess(null), 3000);
 
         } else {
           const errorMessage = result.message || result.error || 'Unknown error';
@@ -366,8 +385,28 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
 
       console.log(`PluginMarketplace: Uninstall API call completed for ${pluginName}`);
 
-      // Note: Success handling is now done via event listeners
-      // The success message will be set by the onPluginUninstallSuccess event handler
+      // Reload plugins to update the UI
+      await loadPlugins();
+
+      // Cập nhật trạng thái plugin trong danh sách hiện tại
+      const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+      setPlugins(prevPlugins =>
+        prevPlugins.map(plugin => {
+          const pluginNormalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, '');
+          if (plugin.name === pluginName ||
+              plugin.name === normalizedName ||
+              pluginNormalizedName === pluginName ||
+              pluginNormalizedName === normalizedName) {
+            return { ...plugin, installed: false };
+          }
+          return plugin;
+        })
+      );
+
+      setSuccess(`Plugin ${normalizedName} uninstalled successfully!`);
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
 
     } catch (error) {
       // Xử lý lỗi với logging chi tiết hơn
