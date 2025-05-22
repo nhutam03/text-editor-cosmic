@@ -6,7 +6,7 @@ import Terminal from './components/Terminal';
 import AIChat from './components/AIChat';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
-import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText, Play, Square, Folder } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText, Play, Folder } from 'lucide-react';
 import { MenuItem } from './plugin/MenuContribution';
 // Removed path import - using custom path utilities instead
 
@@ -1238,9 +1238,9 @@ const App: React.FC = () => {
         setShowTerminal(true);
 
         // Hiển thị gợi ý lệnh nếu có
-        if (result.data.suggestedCommand) {
+        if (result.data && result.data.suggestedCommand) {
           setTerminalOutput((prev) =>
-            prev + `Terminal ready for commands\nSuggested command: ${result.data.suggestedCommand}\n`
+            prev + `Terminal ready for commands\nSuggested command: ${result.data?.suggestedCommand}\n`
           );
         } else {
           setTerminalOutput((prev) => prev + "Terminal ready for commands\n");

@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 import { app } from "electron";
-import extractZip from "extract-zip";
 import {
   getPluginDownloadUrl,
   getPluginDownloadUrlByName,
@@ -396,7 +395,7 @@ export class PluginInstaller {
               // Đọc nội dung package.json từ thư mục con
               try {
                 const packageJsonContent = fs.readFileSync(subPackageJsonPath, "utf8");
-                const packageJson = JSON.parse(packageJsonContent);
+                JSON.parse(packageJsonContent); // Validate JSON format
 
                 // Sao chép package.json lên thư mục gốc
                 console.log(`Copying package.json from ${subPackageJsonPath} to ${packageJsonPath}`);
@@ -1261,7 +1260,7 @@ export class PluginInstaller {
     // Tránh trùng lặp plugin names bằng cách sử dụng Map với tên plugin làm key
     const uniquePlugins = new Map<string, PluginInfo>();
 
-    for (const [key, plugin] of this.installedPlugins.entries()) {
+    for (const plugin of this.installedPlugins.values()) {
       // Đảm bảo plugin có tên hợp lệ
       if (!plugin.name) {
         console.warn('PluginInstaller: Found plugin without name, skipping');

@@ -7,7 +7,7 @@
   ],
   "directories": {
     "buildResources": "resources",
-    "output": "release-test"
+    "output": "release"
   },
   "win": {
     "target": ["nsis"],
