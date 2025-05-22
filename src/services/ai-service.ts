@@ -100,7 +100,7 @@ export class AIService {
       const geminiRequestData = {
         contents: [{
           parts: [{
-            text: `${request.systemPrompt || 'Bạn là một trợ lý AI hữu ích về lập trình. Hãy trả lời bằng tiếng Việt.'}\n\n${request.prompt}`
+            text: `${request.systemPrompt || 'Bạn là một trợ lý AI hữu ích về lập trình. Hãy trả lời bằng tiếng Việt. Bạn có thể sử dụng markdown formatting: **chữ đậm**, *chữ nghiêng*, `code inline`, ```code blocks```, __gạch dưới__, ~~gạch ngang~~.'}\n\n${request.prompt}`
           }]
         }],
         generationConfig: {

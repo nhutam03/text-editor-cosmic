@@ -2,6 +2,43 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, User, Bot } from 'lucide-react';
 import { Button } from './ui/button';
 
+// Component để render markdown trong tin nhắn
+const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+  const renderMarkdown = (text: string) => {
+    // Xử lý code blocks trước (``` ```)
+    let processed = text.replace(/```([\s\S]*?)```/g, (match, code) => {
+      return `<pre class="bg-gray-800 text-green-400 p-2 rounded mt-2 mb-2 overflow-x-auto"><code>${code.trim()}</code></pre>`;
+    });
+
+    // Xử lý inline code (` `)
+    processed = processed.replace(/`([^`]+)`/g, '<code class="bg-gray-700 text-yellow-300 px-1 py-0.5 rounded text-sm">$1</code>');
+
+    // Xử lý chữ đậm (**text**)
+    processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold">$1</strong>');
+
+    // Xử lý chữ nghiêng (*text*)
+    processed = processed.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
+
+    // Xử lý gạch dưới (__text__)
+    processed = processed.replace(/__(.*?)__/g, '<u class="underline">$1</u>');
+
+    // Xử lý gạch ngang (~~text~~)
+    processed = processed.replace(/~~(.*?)~~/g, '<del class="line-through">$1</del>');
+
+    // Xử lý xuống dòng
+    processed = processed.replace(/\n/g, '<br>');
+
+    return processed;
+  };
+
+  return (
+    <div
+      className="whitespace-pre-wrap"
+      dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+    />
+  );
+};
+
 interface AIChatProps {
   onClose: () => void;
 }
@@ -46,7 +83,7 @@ const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
         pluginName: 'ai-assistant',
         content: input,
         options: {
-          systemPrompt: 'Bạn là một trợ lý AI hữu ích về lập trình. Hãy trả lời bằng tiếng Việt.',
+          systemPrompt: 'Bạn là một trợ lý AI hữu ích về lập trình. Hãy trả lời bằng tiếng Việt. Bạn có thể sử dụng markdown formatting: **chữ đậm**, *chữ nghiêng*, `code inline`, ```code blocks```, __gạch dưới__, ~~gạch ngang~~.',
           prompt: input
         }
       };
@@ -144,7 +181,11 @@ const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
                   </>
                 )}
               </div>
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              {message.role === 'assistant' ? (
+                <MarkdownRenderer content={message.content} />
+              ) : (
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              )}
             </div>
           </div>
         ))}

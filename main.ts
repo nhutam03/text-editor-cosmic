@@ -1109,7 +1109,7 @@ app.whenReady().then(async () => {
 
           const aiRequest = {
             prompt: data.content,
-            systemPrompt: data.options?.systemPrompt || 'Bạn là một trợ lý AI hữu ích về lập trình. Hãy trả lời bằng tiếng Việt.',
+            systemPrompt: data.options?.systemPrompt || 'Bạn là một trợ lý AI hữu ích về lập trình. Hãy trả lời bằng tiếng Việt. Bạn có thể sử dụng markdown formatting: **chữ đậm**, *chữ nghiêng*, `code inline`, ```code blocks```, __gạch dưới__, ~~gạch ngang~~.',
             maxTokens: data.options?.maxTokens || 1000,
             temperature: data.options?.temperature || 0.7
           };
