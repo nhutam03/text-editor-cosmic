@@ -87,8 +87,19 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<
-    Array<{ filePath: string; line: number; preview: string }>
+    Array<{
+      filePath: string;
+      line: number;
+      preview: string;
+      matches: number;
+    }>
   >([]);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [totalResults, setTotalResults] = useState<number>(0);
+  const [totalFiles, setTotalFiles] = useState<number>(0);
+  const [expandedSearchFiles, setExpandedSearchFiles] = useState<Set<string>>(
+    new Set()
+  );
 
   const renderContent = () => {
     switch (activeTab) {
@@ -132,12 +143,13 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                   />
                   <input
                     type="text"
-                    placeholder="Search"
-                    className="explorer bg-[#3c3c3c] text-white text-xs pl-8 pr-2 py-1 rounded w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Search in files..."
+                    className="explorer bg-[#3c3c3c] text-white text-xs pl-8 pr-2 py-1 rounded w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && handleSearchInFiles(searchQuery)
+                    }
                   />
                   {searchQuery && (
                     <X
@@ -237,41 +249,125 @@ const ContentArea: React.FC<ContentAreaProps> = ({
       case "search":
         return (
           <div className="p-2 h-full flex flex-col">
-            <div className="flex items-center mb-2">
-              <Search className="h-4 w-4 mr-2 text-gray-400" />
-              <input
-                type="text"
-                className="w-full p-2 bg-gray-800 text-white rounded-md"
-                placeholder="Search in files..."
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && handleSearchInFiles(searchQuery)
-                }
-              />
-              {searchQuery && (
-                <X
-                  size={14}
-                  className="ml-2 text-gray-400 hover:text-white cursor-pointer"
-                  onClick={() => setSearchQuery("")}
-                />
-              )}
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {searchResults.map((result, index) => (
-                <div
-                  key={index}
-                  className="p-2 hover:bg-gray-700 cursor-pointer"
-                  onClick={() =>
-                    handleSearchResultClick(result.filePath, result.line)
+            {/* Header tìm kiếm */}
+            <div className="flex flex-col mb-2">
+              <div className="flex items-center mb-2">
+                <Search className="h-4 w-4 mr-2 text-gray-400" />
+                <input
+                  type="text"
+                  className="w-full p-2 bg-[#3c3c3c] text-white rounded-md text-sm"
+                  placeholder="Search in files..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && handleSearchInFiles(searchQuery)
                   }
-                >
-                  <div className="text-sm text-blue-400">{result.filePath}</div>
-                  <div className="text-xs text-gray-300">
-                    Line {result.line}: {result.preview}
-                  </div>
+                />
+                {searchQuery && (
+                  <X
+                    size={14}
+                    className="ml-2 text-gray-400 hover:text-white cursor-pointer"
+                    onClick={() => setSearchQuery("")}
+                  />
+                )}
+              </div>
+
+              {/* Các tùy chọn tìm kiếm */}
+              <div className="flex items-center text-xs text-gray-400 space-x-4">
+                <div className="flex items-center space-x-2">
+                  <button className="hover:text-white">Aa</button>
+                  <button className="hover:text-white">ab</button>
+                  <button className="hover:text-white">.*</button>
                 </div>
-              ))}
+                <div className="flex items-center space-x-2">
+                  <RefreshCw
+                    size={14}
+                    className={`cursor-pointer hover:text-white ${
+                      isSearching ? "animate-spin text-blue-400" : ""
+                    }`}
+                    onClick={() => handleSearchInFiles(searchQuery)}
+                  />
+                  <button className="hover:text-white">
+                    <ChevronDown size={14} />
+                  </button>
+                  <button className="hover:text-white">
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Kết quả tìm kiếm */}
+            <div className="flex-1 overflow-y-auto">
+              {isSearching ? (
+                <div className="text-gray-400 text-sm flex items-center">
+                  <RefreshCw size={14} className="animate-spin mr-2" />
+                  Đang tìm kiếm...
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div>
+                  <div className="text-gray-400 text-xs mb-2">
+                    {totalResults} kết quả trong {totalFiles} files
+                  </div>
+
+                  {/* Danh sách kết quả */}
+                  {searchResults.map((file) => (
+                    <div key={file.filePath} className="mb-2">
+                      {/* Header của file */}
+                      <div
+                        className="flex items-center text-sm cursor-pointer hover:bg-[#2a2d2e] p-1"
+                        onClick={() => toggleSearchFileExpand(file.filePath)}
+                      >
+                        {expandedSearchFiles.has(file.filePath) ? (
+                          <ChevronDown
+                            size={14}
+                            className="text-gray-400 mr-1"
+                          />
+                        ) : (
+                          <ChevronRight
+                            size={14}
+                            className="text-gray-400 mr-1"
+                          />
+                        )}
+
+                        <FileText size={14} className="text-blue-400 mr-1" />
+                        <span className="text-blue-400 hover:underline">
+                          {file.filePath}
+                        </span>
+                        <span className="text-gray-400 ml-2 text-xs">
+                          ({file.matches} kết quả)
+                        </span>
+                      </div>
+
+                      {/* Chi tiết kết quả trong file */}
+                      {expandedSearchFiles.has(file.filePath) &&
+                        file.lines &&
+                        file.lines.map((line, index) => (
+                          <div
+                            key={`${file.filePath}-${line.line}-${index}`}
+                            className="pl-6 py-1 text-sm hover:bg-[#2a2d2e] cursor-pointer flex"
+                            onClick={() =>
+                              handleSearchResultClick(file.filePath, line.line)
+                            }
+                          >
+                            <span className="text-gray-500 mr-2 min-w-[3rem] text-right">
+                              {line.line}:
+                            </span>
+                            <span className="text-white">{line.preview}</span>
+                          </div>
+                        ))}
+                    </div>
+                  ))}
+                </div>
+              ) : searchQuery ? (
+                <div className="text-gray-400 text-sm">
+                  Không tìm thấy kết quả
+                </div>
+              ) : (
+                <div className="text-gray-400 text-sm">
+                  Nhập từ khóa để tìm kiếm
+                </div>
+              )}
             </div>
           </div>
         );
@@ -1574,6 +1670,112 @@ const ContentArea: React.FC<ContentAreaProps> = ({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  // Hàm xử lý tìm kiếm trong files
+  const handleSearchInFiles = (query: string) => {
+    if (!query.trim() || !selectedFolder) return;
+
+    setIsSearching(true);
+    console.log("Đang tìm kiếm:", query);
+
+    window.electron.ipcRenderer.send("search-in-files", {
+      query,
+      folder: selectedFolder,
+    });
+  };
+
+  // Thêm useEffect để lắng nghe kết quả tìm kiếm từ main process
+  useEffect(() => {
+    const searchResultsListener = (
+      _event: IpcRendererEvent,
+      results: Array<{
+        filePath: string;
+        line: number;
+        preview: string;
+      }>
+    ) => {
+      console.log("Nhận được kết quả tìm kiếm:", results);
+
+      // Nhóm kết quả theo file và đếm số lượng kết quả
+      const groupedResults: Record<
+        string,
+        {
+          matches: number;
+          lines: Array<{ line: number; preview: string }>;
+        }
+      > = {};
+
+      results.forEach((result) => {
+        if (!groupedResults[result.filePath]) {
+          groupedResults[result.filePath] = {
+            matches: 0,
+            lines: [],
+          };
+        }
+
+        groupedResults[result.filePath].matches++;
+        groupedResults[result.filePath].lines.push({
+          line: result.line,
+          preview: result.preview,
+        });
+      });
+
+      // Chuyển đổi kết quả nhóm thành mảng để hiển thị
+      const formattedResults = Object.entries(groupedResults).map(
+        ([filePath, data]) => ({
+          filePath,
+          matches: data.matches,
+          line: data.lines[0].line, // Lấy dòng đầu tiên để hiển thị
+          preview: data.lines[0].preview, // Lấy preview đầu tiên để hiển thị
+          lines: data.lines,
+        })
+      );
+
+      setSearchResults(formattedResults);
+      setTotalResults(results.length);
+      setTotalFiles(Object.keys(groupedResults).length);
+      setIsSearching(false);
+
+      // Tự động chuyển sang tab tìm kiếm
+      // Lưu ý: Nếu component này không có quyền thay đổi activeTab,
+      // bạn cần thông báo cho component cha thông qua props
+    };
+
+    window.electron.ipcRenderer.on("search-results", searchResultsListener);
+
+    return () => {
+      window.electron.ipcRenderer.removeListener(
+        "search-results",
+        searchResultsListener
+      );
+    };
+  }, []);
+
+  // Hàm mở/đóng kết quả tìm kiếm của một file
+  const toggleSearchFileExpand = (filePath: string) => {
+    const newExpandedFiles = new Set(expandedSearchFiles);
+    if (newExpandedFiles.has(filePath)) {
+      newExpandedFiles.delete(filePath);
+    } else {
+      newExpandedFiles.add(filePath);
+    }
+    setExpandedSearchFiles(newExpandedFiles);
+  };
+
+  // Hàm xử lý khi click vào kết quả tìm kiếm
+  const handleSearchResultClick = (filePath: string, line: number) => {
+    // Tạo đường dẫn đầy đủ
+    const fullPath = selectedFolder
+      ? path.join(selectedFolder, filePath)
+      : filePath;
+
+    // Gọi hàm onFileSelect để mở file
+    onFileSelect(fullPath);
+
+    // Thông báo cho editor di chuyển đến dòng cụ thể
+    // Bạn cần triển khai thêm logic để di chuyển đến dòng cụ thể trong editor
+    window.electron.ipcRenderer.send("goto-line", { filePath: fullPath, line });
+  };
 
   return (
     <div

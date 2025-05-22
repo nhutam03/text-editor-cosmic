@@ -1819,3 +1819,29 @@ ipcMain.on(
     }
   }
 );
+
+// Thêm IPC handler để di chuyển đến dòng cụ thể trong file
+ipcMain.on(
+  "goto-line",
+  async (event, data: { filePath: string; line: number }) => {
+    try {
+      const { filePath, line } = data;
+
+      // Đọc nội dung file
+      const content = fs.readFileSync(filePath, "utf-8");
+
+      // Gửi nội dung file và thông tin dòng cần di chuyển đến
+      event.sender.send("file-opened", {
+        content,
+        fileName: path.basename(filePath),
+        filePath,
+        gotoLine: line,
+      });
+    } catch (error) {
+      console.error("Error opening file at specific line:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to open file";
+      event.sender.send("file-opened", { error: errorMessage });
+    }
+  }
+);
