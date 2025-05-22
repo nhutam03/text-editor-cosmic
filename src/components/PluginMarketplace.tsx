@@ -35,12 +35,37 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
   useEffect(() => {
     loadPlugins();
 
-    // Đăng ký lắng nghe sự kiện lỗi cài đặt plugin
+    // Đăng ký lắng nghe sự kiện cài đặt plugin
     window.electron.ipcRenderer.onPluginInstallError((data) => {
       console.log('Received plugin install error:', data);
       setInstalling(null);
       setError(`Failed to install ${data.pluginName}: ${data.error}`);
+
+      // Clear error message after 5 seconds
+      setTimeout(() => setError(null), 5000);
     });
+
+    // Đăng ký lắng nghe sự kiện cài đặt plugin thành công
+    if (window.electron.ipcRenderer.onPluginInstallSuccess) {
+      window.electron.ipcRenderer.onPluginInstallSuccess((data) => {
+        console.log('Received plugin install success:', data);
+        setInstalling(null);
+        setSuccess(`Successfully installed ${data.pluginName}`);
+
+        // Clear selected plugin if it was the one installed
+        if (selectedPlugin && selectedPlugin.name === data.pluginName) {
+          setSelectedPlugin({ ...selectedPlugin, installed: true });
+        }
+
+        // Reload plugins list
+        loadPlugins().catch(error => {
+          console.error('Error reloading plugins after install success:', error);
+        });
+
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccess(null), 3000);
+      });
+    }
 
     // Đăng ký lắng nghe sự kiện gỡ cài đặt plugin thành công
     window.electron.ipcRenderer.onPluginUninstallSuccess((data) => {
@@ -246,6 +271,15 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
   };
 
   const handleInstall = async (pluginName: string): Promise<void> => {
+    console.log(`PluginMarketplace: Starting install for ${pluginName}`);
+
+    // Validate plugin name
+    if (!pluginName || typeof pluginName !== 'string') {
+      console.error(`PluginMarketplace: Invalid plugin name: ${pluginName}`);
+      setError('Invalid plugin name');
+      return;
+    }
+
     try {
       setInstalling(pluginName);
       setError(null);
@@ -253,67 +287,48 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
 
       // Chuẩn hóa tên plugin (loại bỏ phiên bản nếu có)
       const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
-      console.log(`Installing plugin: ${pluginName} (normalized: ${normalizedName})`);
+      console.log(`PluginMarketplace: Installing plugin: ${pluginName} (normalized: ${normalizedName})`);
 
       const result = await window.electron.ipcRenderer.installPlugin(pluginName);
+      console.log(`PluginMarketplace: Install API call completed for ${pluginName}`, result);
 
       // Kiểm tra kết quả trả về
       if (result && typeof result === 'object' && 'success' in result) {
         if (result.success) {
-          setSuccess(`Successfully installed ${normalizedName}`);
-          // Update the plugin list
-          await loadPlugins();
+          console.log(`PluginMarketplace: Plugin ${pluginName} installed successfully`);
 
-          // Update the selected plugin if it's the one we just installed
-          if (selectedPlugin) {
-            const selectedNormalizedName = selectedPlugin.name.replace(/(-\d+\.\d+\.\d+)$/, '');
-            if (selectedNormalizedName === normalizedName || selectedPlugin.name === pluginName) {
-              const updatedPlugin = { ...selectedPlugin, installed: true };
-              setSelectedPlugin(updatedPlugin);
-            }
-          }
+          // Note: Success handling is now done via event listeners
+          // The success message will be set by the onPluginInstallSuccess event handler
 
-          // Đảm bảo cập nhật trạng thái cài đặt của plugin trong danh sách
-          setPlugins(prevPlugins => {
-            return prevPlugins.map(plugin => {
-              const pluginNormalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, '');
-              if (pluginNormalizedName === normalizedName || plugin.name === pluginName) {
-                console.log(`Marking plugin ${plugin.name} as installed`);
-                return { ...plugin, installed: true };
-              }
-              return plugin;
-            });
-          });
-
-          // Cập nhật menu items sau khi cài đặt plugin
-          setTimeout(() => {
-            console.log('Requesting menu items update after plugin installation');
-            window.electron.ipcRenderer.invoke('get-menu-items', 'file')
-              .then(fileMenuItems => {
-                console.log('Updated file menu items:', fileMenuItems);
-              })
-              .catch(err => console.error('Error getting file menu items:', err));
-
-            window.electron.ipcRenderer.invoke('get-menu-items', 'edit')
-              .then(editMenuItems => {
-                console.log('Updated edit menu items:', editMenuItems);
-              })
-              .catch(err => console.error('Error getting edit menu items:', err));
-          }, 1000); // Đợi 1 giây để plugin có thời gian đăng ký menu items
         } else {
-          const errorMessage = result.error ? String(result.error) : 'Unknown error';
+          const errorMessage = result.message || result.error || 'Unknown error';
+          console.error(`PluginMarketplace: Plugin installation failed: ${errorMessage}`);
           setError(`Failed to install ${normalizedName}: ${errorMessage}`);
+
+          // Clear error message after 5 seconds
+          setTimeout(() => setError(null), 5000);
         }
       } else {
-        console.warn('Unexpected result format from installPlugin:', result);
+        console.warn('PluginMarketplace: Unexpected result format from installPlugin:', result);
         setError(`Failed to install ${normalizedName}: Unexpected response format`);
+
+        // Clear error message after 5 seconds
+        setTimeout(() => setError(null), 5000);
       }
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Error installing ${pluginName}: ${errorMessage}`);
-      console.error(`Error installing plugin ${pluginName}:`, err);
+      console.error(`PluginMarketplace: Error in handleInstall for ${pluginName}:`, err);
+
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`Failed to install ${pluginName}: ${errorMessage}`);
+
+      // Clear error message after 5 seconds
+      setTimeout(() => setError(null), 5000);
     } finally {
-      setInstalling(null);
+      // Luôn đặt trạng thái installing về null sau một khoảng thời gian ngắn
+      // để đảm bảo UI được cập nhật đúng cách
+      setTimeout(() => {
+        setInstalling(null);
+      }, 100);
     }
   };
 

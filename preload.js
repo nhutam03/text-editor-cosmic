@@ -100,6 +100,15 @@ contextBridge.exposeInMainWorld('electron', {
             });
         },
 
+        // Xử lý thông báo thành công cài đặt plugin
+        onPluginInstallSuccess: (callback) => {
+            console.log('Preload: Registering plugin-install-success listener');
+            ipcRenderer.on('plugin-install-success', (event, data) => {
+                console.log('Preload: Received plugin-install-success:', data);
+                callback(data);
+            });
+        },
+
         // Xử lý thông báo thành công gỡ cài đặt plugin
         onPluginUninstallSuccess: (callback) => {
             console.log('Preload: Registering plugin-uninstall-success listener');

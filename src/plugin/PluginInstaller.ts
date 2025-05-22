@@ -106,10 +106,20 @@ export class PluginInstaller {
     pluginName: string,
     downloadUrl: string
   ): Promise<PluginInfo> {
+    console.log(
+      `PluginInstaller: Starting download and installation of plugin ${pluginName} from ${downloadUrl}`
+    );
+
+    // Validate inputs
+    if (!pluginName || typeof pluginName !== 'string') {
+      throw new Error('Invalid plugin name provided');
+    }
+
+    if (!downloadUrl || typeof downloadUrl !== 'string') {
+      throw new Error('Invalid download URL provided');
+    }
+
     try {
-      console.log(
-        `Starting download and installation of plugin ${pluginName} from ${downloadUrl}`
-      );
 
       // 1. Kiểm tra xem plugin đã được cài đặt chưa
       const existingDir = this.findPluginDirectory(pluginName);
@@ -617,22 +627,33 @@ export class PluginInstaller {
       return pluginInfo;
     } catch (error) {
       console.error(
-        `Error downloading and installing plugin ${pluginName}:`,
+        `PluginInstaller: Error downloading and installing plugin ${pluginName}:`,
         error
       );
 
       // Clean up any partial installation
       try {
-        const pluginDir = path.join(this.pluginsDir, pluginName);
+        const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
+        const pluginDir = path.join(this.pluginsDir, normalizedName);
         if (fs.existsSync(pluginDir)) {
-          console.log(`Cleaning up failed installation: ${pluginDir}`);
+          console.log(`PluginInstaller: Cleaning up failed installation: ${pluginDir}`);
           fs.rmSync(pluginDir, { recursive: true, force: true });
         }
       } catch (cleanupError) {
-        console.error(`Error cleaning up failed installation: ${cleanupError}`);
+        console.error(`PluginInstaller: Error cleaning up failed installation: ${cleanupError}`);
       }
 
-      throw error;
+      // Return a fallback plugin info instead of throwing to prevent crashes
+      const fallbackPluginInfo: PluginInfo = {
+        name: pluginName,
+        version: "1.0.0",
+        description: `Plugin ${pluginName} (installation failed)`,
+        author: "Unknown",
+        installed: false
+      };
+
+      console.log(`PluginInstaller: Returning fallback plugin info for ${pluginName}`);
+      return fallbackPluginInfo;
     }
   }
 

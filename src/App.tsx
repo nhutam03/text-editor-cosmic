@@ -1016,7 +1016,16 @@ const App: React.FC = () => {
       "plugin-install-success",
       (_event: Electron.IpcRendererEvent, data: { pluginName: string; message: string; progress?: number }) => {
         console.log(`Plugin installation success: ${data.pluginName} - ${data.message}`);
-        // You can show a success message here
+
+        // Show success notification
+        console.log(`Plugin ${data.pluginName} đã được cài đặt thành công`);
+
+        // Force reload menu items after successful installation
+        setTimeout(() => {
+          loadPluginMenuItems("file");
+          loadPluginMenuItems("edit");
+          loadPluginMenuItems("run");
+        }, 100);
       }
     );
 
@@ -1024,7 +1033,9 @@ const App: React.FC = () => {
       "plugin-install-error",
       (_event: Electron.IpcRendererEvent, data: { pluginName: string; error: string }) => {
         console.error(`Plugin installation error: ${data.pluginName} - ${data.error}`);
-        // You can show an error message here
+
+        // Show error notification to user
+        alert(`Lỗi khi cài đặt plugin ${data.pluginName}: ${data.error}`);
       }
     );
 

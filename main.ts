@@ -642,18 +642,26 @@ app.whenReady().then(async () => {
 
 
 
-  // Cài đặt plugin - Đơn giản hóa tối đa
+  // Cài đặt plugin - Cải thiện với error handling tốt hơn
   ipcMain.handle("install-plugin", async (event, pluginName) => {
     console.log(`Main process: Installing plugin ${pluginName}`);
 
+    // Validate input
+    if (!pluginName || typeof pluginName !== 'string') {
+      console.error(`Main process: Invalid plugin name: ${pluginName}`);
+      return { success: false, message: "Invalid plugin name" };
+    }
+
     try {
-      // Gọi installPlugin và bắt lỗi
+      // Gọi installPlugin với error handling cải thiện
+      console.log(`Main process: Calling pluginManager.installPlugin for ${pluginName}`);
       const result = await pluginManager.installPlugin(pluginName);
-      console.log(`Main process: Plugin ${pluginName} installed successfully`);
+      console.log(`Main process: Plugin ${pluginName} installed successfully`, result);
 
       // Gửi danh sách plugin mới cho renderer với error handling cải tiến
       try {
         const plugins = pluginManager.getPlugins();
+        console.log(`Main process: Sending updated plugin list with ${plugins.length} plugins`);
 
         // Kiểm tra xem event.sender vẫn còn hợp lệ không
         if (event.sender && !event.sender.isDestroyed()) {
@@ -709,6 +717,19 @@ app.whenReady().then(async () => {
         console.error(`Main process: Error sending plugin list:`, listError);
       }
 
+      // Send success event to renderer
+      try {
+        if (event.sender && !event.sender.isDestroyed()) {
+          event.sender.send('plugin-install-success', {
+            pluginName,
+            message: `Plugin ${pluginName} installed successfully`,
+            progress: 100
+          });
+        }
+      } catch (sendError) {
+        console.error(`Main process: Error sending install success event:`, sendError);
+      }
+
       // Trả về kết quả cài đặt
       return {
         success: true,
@@ -716,13 +737,19 @@ app.whenReady().then(async () => {
         ...result
       };
     } catch (error) {
-      console.error(`Main process: Error installing plugin:`, error);
+      console.error(`Main process: Error installing plugin ${pluginName}:`, error);
 
-      // Gửi thông báo lỗi cho renderer
-      event.sender.send('plugin-install-error', {
-        pluginName,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+      // Send error event to renderer
+      try {
+        if (event.sender && !event.sender.isDestroyed()) {
+          event.sender.send('plugin-install-error', {
+            pluginName,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      } catch (sendError) {
+        console.error(`Main process: Error sending install error event:`, sendError);
+      }
 
       // Luôn trả về đối tượng hợp lệ để tránh màn hình trắng
       return {
