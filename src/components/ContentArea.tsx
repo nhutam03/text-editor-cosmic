@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
   File,
-  FolderOpen,
   ChevronDown,
   ChevronRight,
   RefreshCw,
@@ -13,7 +12,6 @@ import {
   X,
   Trash2,
   Edit,
-  Copy,
   FileText,
   Code,
   FileJson,
@@ -29,18 +27,29 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import PluginMarketplace from "./PluginMarketplace";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
   ContextMenuTrigger,
   ContextMenuSeparator,
 } from "./ui/context-menu";
+import * as path from "path";
 
 interface FolderStructureItem {
   name: string;
   type: "directory" | "file";
   children?: FolderStructureItem[];
   path?: string; // Đường dẫn đầy đủ đến file/thư mục
+}
+
+interface SearchResultLine {
+  line: number;
+  preview: string;
+}
+
+interface SearchResult {
+  filePath: string;
+  line: number;
+  preview: string;
+  matches: number;
+  lines?: SearchResultLine[];
 }
 
 interface ContentAreaProps {
@@ -83,27 +92,15 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   const [explorerSearchQuery, setExplorerSearchQuery] = useState<string>(""); // Tìm kiếm trong explorer
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>(""); // Tìm kiếm nội dung trong files
   const renameInputRef = useRef<HTMLInputElement>(null);
-  const [showFolderMenu, setShowFolderMenu] = useState<boolean>(false);
-  const folderMenuRef = useRef<HTMLDivElement>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
-<<<<<<< HEAD
-=======
-  const [searchResults, setSearchResults] = useState<
-    Array<{
-      filePath: string;
-      line: number;
-      preview: string;
-      matches: number;
-    }>
-  >([]);
+  const [, setRefreshMessage] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [totalResults, setTotalResults] = useState<number>(0);
   const [totalFiles, setTotalFiles] = useState<number>(0);
   const [expandedSearchFiles, setExpandedSearchFiles] = useState<Set<string>>(
     new Set()
   );
->>>>>>> 4c8d94c22b2ea0598f488f23bf17a71e8c57905f
 
   const renderContent = () => {
     switch (activeTab) {
@@ -118,19 +115,16 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                     isRefreshing ? "animate-spin text-blue-400" : ""
                   }`}
                   onClick={refreshFolderStructure}
-                  title="Refresh"
                 />
                 <FilePlus
                   size={14}
                   className="text-gray-400 hover:text-white cursor-pointer"
                   onClick={() => handleCreateNewFile()}
-                  title="New File"
                 />
                 <FolderPlus
                   size={14}
                   className="text-gray-400 hover:text-white cursor-pointer"
                   onClick={() => handleCreateNewFolder()}
-                  title="New Folder"
                 />
                 <MoreHorizontal
                   size={14}
@@ -196,7 +190,6 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                           e.stopPropagation();
                           handleCreateNewFile();
                         }}
-                        title="New File"
                       />
                       <div className="relative">
                         <FolderPlus
@@ -206,7 +199,6 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                             e.stopPropagation();
                             handleCreateNewFolder();
                           }}
-                          title="New Folder"
                         />
                       </div>
                       <RefreshCw
@@ -218,7 +210,6 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                           e.stopPropagation();
                           refreshFolderStructure();
                         }}
-                        title="Refresh"
                       />
                     </div>
                   </div>
@@ -346,7 +337,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
                       {/* Chi tiết kết quả trong file */}
                       {expandedSearchFiles.has(file.filePath) &&
                         file.lines &&
-                        file.lines.map((line, index) => (
+                        file.lines.map((line: SearchResultLine, index: number) => (
                           <div
                             key={`${file.filePath}-${line.line}-${index}`}
                             className="pl-6 py-1 text-sm hover:bg-[#2a2d2e] cursor-pointer flex"
@@ -783,7 +774,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   // Hàm xử lý sự kiện new-file-created
   const handleNewFileCreated = () => {
     // Đăng ký một listener tạm thời để xử lý sự kiện new-file-created
-    const newFileCreatedListener = (event: any, result: any) => {
+    const newFileCreatedListener = (_event: IpcRendererEvent, result: any) => {
       console.log("New file created:", result);
       refreshFolderStructure();
 
@@ -1455,7 +1446,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
     window.electron.ipcRenderer.removeAllListeners("item-deleted");
 
     // Lắng nghe sự kiện folder-structure
-    window.electron.ipcRenderer.on("folder-structure", (event, structure) => {
+    window.electron.ipcRenderer.on("folder-structure", (_event: IpcRendererEvent, structure: FolderStructureItem) => {
       console.log("Received folder structure:", structure);
       setFolderStructure(structure);
       // Lưu đường dẫn đầy đủ của thư mục đã chọn
@@ -1468,13 +1459,13 @@ const ContentArea: React.FC<ContentAreaProps> = ({
     });
 
     // Lắng nghe sự kiện item-renamed để log kết quả
-    window.electron.ipcRenderer.on("item-renamed", (event, result) => {
+    window.electron.ipcRenderer.on("item-renamed", (_event: IpcRendererEvent, result: any) => {
       console.log("Item renamed event received:", result);
       // Không làm mới cấu trúc thư mục vì đã cập nhật UI trực tiếp trong handleRenameComplete
     });
 
     // Lắng nghe sự kiện item-deleted để cập nhật UI
-    window.electron.ipcRenderer.on("item-deleted", (event, result) => {
+    window.electron.ipcRenderer.on("item-deleted", (_event: IpcRendererEvent, result: any) => {
       console.log("Item deleted event received in useEffect:", result);
 
       if (result.success && folderStructure) {
@@ -1594,7 +1585,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
         .then((pluginList: string[]) => {
           setPlugins(pluginList || []);
         })
-        .catch((error) => {
+        .catch((error: any) => {
           console.error("Failed to fetch plugins:", error);
           setPlugins([]);
         });
@@ -1604,7 +1595,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
 
       window.electron.ipcRenderer.on(
         "plugin-list",
-        (event, pluginList: string[]) => {
+        (_event: IpcRendererEvent, pluginList: string[]) => {
           setPlugins(pluginList || []);
           // Cập nhật lại danh sách plugin có sẵn khi danh sách plugin đã cài đặt thay đổi
           loadAvailablePlugins();
@@ -1613,7 +1604,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
 
       window.electron.ipcRenderer.on(
         "plugin-applied",
-        (event, message: string) => {
+        (_event: IpcRendererEvent, message: string) => {
           setPluginMessage(message);
           setTimeout(() => setPluginMessage(null), 5000); // Ẩn thông báo sau 5 giây
         }
@@ -1635,7 +1626,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
 
   useEffect(() => {
     // Lắng nghe sự kiện new-folder-created để cập nhật UI
-    window.electron.ipcRenderer.on("new-folder-created", (event, result) => {
+    window.electron.ipcRenderer.on("new-folder-created", (_event: IpcRendererEvent, result: any) => {
       console.log("New folder created:", result);
 
       if (result.success) {
@@ -1675,39 +1666,9 @@ const ContentArea: React.FC<ContentAreaProps> = ({
     };
   }, [selectedFolder]);
 
-  const toggleFolderMenu = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowFolderMenu(!showFolderMenu);
-  };
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        folderMenuRef.current &&
-        !folderMenuRef.current.contains(event.target as Node)
-      ) {
-        setShowFolderMenu(false);
-      }
-    };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
 
-  // Hàm xử lý tìm kiếm trong files
-  const handleSearchInFiles = (query: string) => {
-    if (!query.trim() || !selectedFolder) return;
-
-    setIsSearching(true);
-    console.log("Đang tìm kiếm:", query);
-
-    window.electron.ipcRenderer.send("search-in-files", {
-      query,
-      folder: selectedFolder,
-    });
-  };
 
   // Thêm useEffect để lắng nghe kết quả tìm kiếm từ main process
   useEffect(() => {
