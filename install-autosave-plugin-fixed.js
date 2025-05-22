@@ -1,9 +1,62 @@
-const net = require('net');
+const fs = require("fs");
+const path = require("path");
+const { execSync } = require("child_process");
 
-// Get port from command line arguments
+// Function to install the autosave plugin
+function installAutosavePlugin() {
+  try {
+    // Get the user data directory
+    const userDataDir =
+      process.env.APPDATA ||
+      (process.platform === "darwin"
+        ? path.join(process.env.HOME, "Library/Application Support")
+        : path.join(process.env.HOME, ".config"));
+
+    // Define the plugins directory
+    const pluginsDir = path.join(userDataDir, "text-editor-app", "plugins");
+
+    // Create the plugins directory if it doesn't exist
+    if (!fs.existsSync(pluginsDir)) {
+      fs.mkdirSync(pluginsDir, { recursive: true });
+      console.log(`Created plugins directory: ${pluginsDir}`);
+    }
+
+    // Define the autosave plugin directory
+    const autosavePluginDir = path.join(pluginsDir, "autosave_plugin");
+
+    // Create the autosave plugin directory if it doesn't exist
+    if (!fs.existsSync(autosavePluginDir)) {
+      fs.mkdirSync(autosavePluginDir, { recursive: true });
+      console.log(`Created autosave plugin directory: ${autosavePluginDir}`);
+    }
+
+    // Create package.json
+    const packageJson = {
+      name: "autosave_plugin",
+      version: "1.0.0",
+      description: "Auto-save plugin for Text Editor",
+      main: "index.js",
+      author: "Cosmic Text Editor",
+      license: "MIT",
+      dependencies: {
+        net: "^1.0.2",
+      },
+    };
+
+    // Write package.json
+    fs.writeFileSync(
+      path.join(autosavePluginDir, "package.json"),
+      JSON.stringify(packageJson, null, 2)
+    );
+    console.log("Created package.json");
+
+    // Create index.js with fixed port 5001
+    const indexJs = `const net = require('net');
+
+// Get port from command line arguments or use 5001 as default (changed from 5000)
 const args = process.argv.slice(2);
 const portArg = args.find(arg => arg.startsWith('--port='));
-const PORT = portArg ? parseInt(portArg.split('=')[1]) : 5000;
+const PORT = portArg ? parseInt(portArg.split('=')[1]) : 5001;
 
 // Plugin information
 const pluginInfo = {
@@ -26,7 +79,7 @@ function connectToEditor() {
   client = new net.Socket();
 
   client.connect(PORT, '127.0.0.1', () => {
-    console.log('Connected to editor');
+    console.log('Connected to editor on port ' + PORT);
     connected = true;
 
     // Register plugin
@@ -94,7 +147,7 @@ function connectToEditor() {
 // Handle execute plugin message
 function handleExecute(message) {
   const { content, filePath, options } = message.payload;
-  
+
   // Store the content and file path for auto-save
   if (content && filePath) {
     lastContent = content;
@@ -135,7 +188,7 @@ function startAutoSave() {
   autoSaveInterval = setInterval(() => {
     if (connected && lastContent && lastFilePath) {
       console.log('Auto-saving file:', lastFilePath);
-      
+
       // Send save request to editor
       client.write(JSON.stringify({
         type: 'save-file',
@@ -188,4 +241,35 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-console.log('AutoSave plugin started on port:', PORT);
+console.log('AutoSave plugin started on port:', PORT);`;
+
+    // Write index.js
+    fs.writeFileSync(path.join(autosavePluginDir, "index.js"), indexJs);
+    console.log("Created index.js with fixed port 5001");
+
+    // Install dependencies
+    try {
+      console.log(`Installing dependencies in ${autosavePluginDir}`);
+      execSync("npm install --no-fund --no-audit --loglevel=error", {
+        cwd: autosavePluginDir,
+        stdio: "inherit",
+        timeout: 60000, // 60 seconds timeout
+      });
+      console.log("Dependencies installed successfully");
+    } catch (npmError) {
+      console.error("Error installing dependencies:", npmError);
+      console.log(
+        "Continuing without installing dependencies - plugin may not work correctly"
+      );
+    }
+
+    console.log("Autosave plugin installed successfully!");
+    return true;
+  } catch (error) {
+    console.error("Error installing autosave plugin:", error);
+    return false;
+  }
+}
+
+// Run the installation
+installAutosavePlugin();
