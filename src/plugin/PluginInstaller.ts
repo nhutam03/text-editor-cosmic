@@ -9,6 +9,7 @@ import {
 import { StorageReference } from "firebase/storage";
 import { PluginInfo } from "./PluginInterface";
 import AdmZip from "adm-zip";
+import { SimpleDownloader } from "./SimpleDownloader";
 
 /**
  * Class responsible for installing and managing plugins
@@ -172,10 +173,19 @@ export class PluginInstaller {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      // 3. Tải plugin về
+      // 3. Tải plugin về using SimpleDownloader
       const zipPath = path.join(tempDir, `${pluginName}.zip`);
       console.log(`Downloading plugin to ${zipPath}`);
-      await this.downloadFile(downloadUrl, zipPath);
+
+      // Try the provided URL first, then fallback to correct URL if needed
+      try {
+        await SimpleDownloader.downloadFile(downloadUrl, zipPath);
+      } catch (error) {
+        console.log(`Download failed with provided URL, trying correct Firebase URL...`);
+        const correctUrl = SimpleDownloader.getPluginUrl(pluginName);
+        console.log(`Using correct URL: ${correctUrl}`);
+        await SimpleDownloader.downloadFile(correctUrl, zipPath);
+      }
 
       // 4. Kiểm tra file zip
       if (!fs.existsSync(zipPath)) {
@@ -232,10 +242,12 @@ export class PluginInstaller {
         throw new Error(`Failed to create plugin directory: ${mkdirError.message}`);
       }
 
-      // Extract the zip file
+      // Extract the zip file using AdmZip for better compatibility
       try {
         console.log(`Extracting plugin to ${pluginDir}`);
-        await extractZip(zipPath, { dir: pluginDir });
+        const zip = new AdmZip(zipPath);
+        zip.extractAllTo(pluginDir, true);
+        console.log(`Successfully extracted plugin to ${pluginDir}`);
       } catch (error) {
         const extractError = error as Error;
         console.error(`Error extracting plugin: ${extractError}`);
@@ -336,9 +348,13 @@ export class PluginInstaller {
       let packageJsonFound = false;
       let foundPackageJsonPath = "";
 
+      // Wait a bit for file system to sync
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       if (fs.existsSync(packageJsonPath)) {
         packageJsonFound = true;
         foundPackageJsonPath = packageJsonPath;
+        console.log(`✅ Found package.json at root level: ${packageJsonPath}`);
       } else {
         // Tìm package.json trong các thư mục con
         console.log(
@@ -456,7 +472,16 @@ export class PluginInstaller {
 
       // If no package.json was found, create a minimal one
       if (!packageJsonFound) {
-        console.log(`No package.json found, creating a minimal one for ${pluginName}`);
+        console.log(`❌ No package.json found anywhere, creating a minimal one for ${pluginName}`);
+
+        // List all files in plugin directory for debugging
+        try {
+          const allFiles = this.getAllFilesRecursively(pluginDir);
+          console.log(`📁 All files in plugin directory:`, allFiles);
+        } catch (error) {
+          console.error(`Error listing files: ${error}`);
+        }
+
         const minimalPackageJson = {
           name: pluginName,
           version: "1.0.0",
@@ -472,9 +497,12 @@ export class PluginInstaller {
           );
           packageJsonFound = true;
           foundPackageJsonPath = packageJsonPath;
+          console.log(`✅ Created minimal package.json at ${packageJsonPath}`);
         } catch (writePackageJsonError) {
-          console.error(`Error creating minimal package.json: ${writePackageJsonError}`);
-          // Continue without package.json
+          const error = writePackageJsonError as Error;
+          console.error(`Error creating minimal package.json: ${error}`);
+          // This is a critical error - we need package.json
+          throw new Error(`Failed to create package.json: ${error.message}`);
         }
       }
 
@@ -495,7 +523,7 @@ export class PluginInstaller {
             fs.readFileSync(foundPackageJsonPath, "utf-8")
           );
           console.log(
-            `Package.json content: ${JSON.stringify(extractedPackageJson, null, 2)}`
+            `package.json content: ${JSON.stringify(extractedPackageJson, null, 2)}`
           );
 
           // Đảm bảo package.json ở thư mục gốc
@@ -574,6 +602,15 @@ export class PluginInstaller {
           }
 
           // Bỏ qua dependency electron vì nó đã có trong ứng dụng chính
+
+          // Special handling for prettier plugin - add prettier dependency
+          if (pluginName.includes('prettier') || (extractedPackageJson.name && extractedPackageJson.name.includes('prettier'))) {
+            if (!minimalPackageJson.dependencies.prettier) {
+              minimalPackageJson.dependencies.prettier = '^3.0.0';
+              console.log(`Added prettier dependency for plugin ${pluginName}`);
+            }
+          }
+
           console.log(
             `Using minimal dependencies: ${JSON.stringify(
               minimalPackageJson.dependencies
@@ -741,7 +778,7 @@ export class PluginInstaller {
             } catch (error) {
               console.error(`Lỗi tạo URL động: ${error}`);
               // Tạo URL với bucket mặc định
-              const mockBucket = 'cosmic-text-editor.appspot.com';
+              const mockBucket = 'cosmic-text-editor.firebasestorage.app';
               const encodedPluginName = encodeURIComponent(`plugins/${pluginName}-1.0.0.zip`);
               fallbackUrl = `https://firebasestorage.googleapis.com/v0/b/${mockBucket}/o/${encodedPluginName}?alt=media`;
               console.log(`Sử dụng URL mặc định: ${fallbackUrl}`);
@@ -1587,7 +1624,7 @@ export class PluginInstaller {
             fs.readFileSync(packageJsonPath, "utf-8")
           );
           console.log(
-            `Package.json found with content: ${JSON.stringify(
+            `package.json found with content: ${JSON.stringify(
               packageJson,
               null,
               2
@@ -1922,5 +1959,36 @@ export class PluginInstaller {
       console.error('Error finding AI Assistant main script:', error);
       return null;
     }
+  }
+
+  /**
+   * Get all files recursively in a directory
+   */
+  private getAllFilesRecursively(dir: string): string[] {
+    const files: string[] = [];
+
+    try {
+      const items = fs.readdirSync(dir);
+
+      for (const item of items) {
+        const fullPath = path.join(dir, item);
+        try {
+          const stat = fs.statSync(fullPath);
+          if (stat.isDirectory()) {
+            files.push(`📁 ${item}/`);
+            const subFiles = this.getAllFilesRecursively(fullPath);
+            files.push(...subFiles.map(f => `  ${f}`));
+          } else {
+            files.push(`📄 ${item}`);
+          }
+        } catch (error) {
+          files.push(`❌ ${item} (error: ${error})`);
+        }
+      }
+    } catch (error) {
+      files.push(`❌ Error reading directory: ${error}`);
+    }
+
+    return files;
   }
 }

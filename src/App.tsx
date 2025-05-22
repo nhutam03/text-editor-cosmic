@@ -562,7 +562,7 @@ const App: React.FC = () => {
         // Tìm menu item Format Document
         const formatMenuItem = pluginMenuItems.find(
           (item) =>
-            item.id === "prettier-plugin.formatDocument" &&
+            item.id === "prettier-plugin.format" &&
             item.parentMenu.toLowerCase() === "edit"
         );
 

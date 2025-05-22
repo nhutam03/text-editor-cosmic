@@ -689,24 +689,91 @@ export class PluginManager {
           `Plugin ${pluginName} is installed but not registered. Attempting to start it...`
         );
         try {
-          // Try to start the plugin
-          await this.startPlugin(pluginName);
+          // Special handling for prettier-plugin
+          if (pluginName.includes('prettier') || normalizedName.includes('prettier')) {
+            console.log(`Special handling for prettier plugin: ${pluginName}`);
 
-          // Check if the plugin is now registered
-          plugin =
-            this.plugins.get(pluginName) || this.plugins.get(normalizedName);
-          if (plugin) {
-            console.log(
-              `Successfully started and registered plugin ${pluginName}`
-            );
-            return this.executePlugin(pluginName, content, filePath, options);
+            try {
+              // For prettier plugin, we'll create a manual registration without starting a process
+              // since prettier is a formatting tool that doesn't need a persistent process
+
+              const pluginInfo: PluginInfo = {
+                name: normalizedName,
+                version: "1.0.0",
+                description: "Code formatting plugin using Prettier",
+                author: "Text Editor Team",
+                installed: true
+              };
+
+              // Create a dummy connection for the plugin
+              const dummySocket = new Socket();
+              const pluginConnection = new PluginConnection(dummySocket, pluginInfo);
+
+              // Add to plugins list
+              this.plugins.set(pluginName, pluginConnection);
+              this.plugins.set(normalizedName, pluginConnection);
+
+              console.log(`Manually registered prettier plugin: ${pluginName}`);
+
+              // Register default menu items for prettier plugin
+              const prettierMenuItems = [
+                {
+                  id: 'prettier-plugin.format',
+                  label: 'Format Document',
+                  parentMenu: 'edit',
+                  accelerator: 'Shift+Alt+F'
+                }
+              ];
+
+              for (const menuItem of prettierMenuItems) {
+                const item: MenuItem = {
+                  ...menuItem,
+                  pluginId: normalizedName
+                };
+                console.log(`Registering prettier menu item: ${JSON.stringify(item)}`);
+                this.menuRegistry.registerMenuItem(item);
+              }
+
+              // Notify that menu items have changed
+              const allMenuItems = this.menuRegistry.getMenuItems();
+              if (typeof this.onMenuItemsChanged === 'function') {
+                this.onMenuItemsChanged(allMenuItems);
+              }
+
+              // Notify that the plugin list has changed
+              if (typeof this.onPluginListChanged === 'function') {
+                this.onPluginListChanged(this.getPlugins());
+              }
+
+              // Update plugin reference after registration
+              plugin = this.plugins.get(pluginName) || this.plugins.get(normalizedName);
+
+              // For prettier, we'll handle the formatting directly without a plugin process
+              return this.handlePrettierFormatting(content, filePath, options);
+            } catch (prettierError) {
+              console.error(`Error in prettier plugin special handling:`, prettierError);
+              // Fall back to normal plugin handling if special handling fails
+            }
           } else {
-            console.error(
-              `Failed to register plugin ${pluginName} after starting it`
-            );
-            throw new Error(
-              `Failed to register plugin ${pluginName} after starting it`
-            );
+            // Try to start the plugin normally
+            await this.startPlugin(pluginName);
+
+            // Check if the plugin is now registered
+            plugin =
+              this.plugins.get(pluginName) || this.plugins.get(normalizedName);
+            if (plugin) {
+              console.log(
+                `Successfully started and registered plugin ${pluginName}`
+              );
+              return this.executePlugin(pluginName, content, filePath, options);
+            } else {
+              console.error(
+                `Failed to register plugin ${pluginName} after starting it`
+              );
+              throw new Error(
+                `Failed to register plugin ${pluginName} after starting it`
+              );
+            }
           }
         } catch (error: any) {
           console.error(`Failed to start plugin ${pluginName}:`, error);
@@ -757,6 +824,13 @@ export class PluginManager {
       };
 
       try {
+        // Kiểm tra plugin có tồn tại không trước khi gửi message
+        if (!plugin) {
+          clearTimeout(timeoutId);
+          reject(new Error(`Plugin ${pluginName} is not available for execution`));
+          return;
+        }
+
         // Gửi message và đợi phản hồi
         console.log(`Sending execute message to plugin ${pluginName}`);
         plugin.sendMessage(message, responseHandler);
@@ -848,8 +922,51 @@ export class PluginManager {
               console.log(`Using special startup logic for AI Assistant plugin: ${pluginInfo.name}`);
               await this.startAIAssistantPlugin(pluginInfo.name);
             } else {
-              // Try to start the plugin normally
-              await this.startPlugin(pluginInfo.name);
+              // For non-AI plugins, try to register them manually without starting a process
+              console.log(`Manually registering non-AI plugin after installation: ${pluginInfo.name}`);
+
+              try {
+                // Check if it's a prettier plugin
+                if (pluginInfo.name.includes('prettier')) {
+                  // Use special prettier handling
+                  const normalizedPluginName = pluginInfo.name.replace(/(-\d+\.\d+\.\d+)$/, "");
+
+                  // Create a dummy connection for the plugin
+                  const dummySocket = new Socket();
+                  const pluginConnection = new PluginConnection(dummySocket, pluginInfo);
+
+                  // Add to plugins list
+                  this.plugins.set(pluginInfo.name, pluginConnection);
+                  this.plugins.set(normalizedPluginName, pluginConnection);
+
+                  // Register default menu items for prettier plugin
+                  const prettierMenuItems = [
+                    {
+                      id: 'prettier-plugin.format',
+                      label: 'Format Document',
+                      parentMenu: 'edit',
+                      accelerator: 'Shift+Alt+F'
+                    }
+                  ];
+
+                  for (const menuItem of prettierMenuItems) {
+                    const item: MenuItem = {
+                      ...menuItem,
+                      pluginId: normalizedPluginName
+                    };
+                    console.log(`Registering prettier menu item: ${JSON.stringify(item)}`);
+                    this.menuRegistry.registerMenuItem(item);
+                  }
+
+                  console.log(`Successfully registered prettier plugin: ${pluginInfo.name}`);
+                } else {
+                  // For other non-AI plugins, just mark as installed without starting
+                  console.log(`Plugin ${pluginInfo.name} is installed but not auto-started`);
+                }
+              } catch (registrationError) {
+                console.error(`Error manually registering plugin ${pluginInfo.name}:`, registrationError);
+                // Continue without throwing error
+              }
             }
           } catch (startError) {
             console.error(`Error starting plugin ${pluginInfo.name}:`, startError);
@@ -1409,6 +1526,14 @@ export class PluginManager {
 
       for (const pluginInfo of installedPlugins) {
         console.log(`Starting plugin: ${pluginInfo.name}`);
+
+        // Skip auto-starting plugins that are not AI Assistant for now
+        // to avoid startup errors
+        if (!this.isAIAssistantPlugin(pluginInfo.name)) {
+          console.log(`Skipping auto-start for non-AI plugin: ${pluginInfo.name}`);
+          continue;
+        }
+
         try {
           await this.startPlugin(pluginInfo.name);
           console.log(`Successfully started plugin: ${pluginInfo.name}`);
@@ -1479,8 +1604,11 @@ export class PluginManager {
         }
       }
 
-      // Get plugin directory
-      const pluginDir = path.dirname(mainPath);
+      // Get plugin directory - should be the root plugin directory, not the directory containing the main script
+      const pluginDir = this.pluginInstaller.findPluginDirectory(pluginName);
+      if (!pluginDir) {
+        throw new Error(`Plugin directory not found for ${pluginName}`);
+      }
       console.log(`Plugin directory: ${pluginDir}`);
 
       // Check if node_modules exists
@@ -1524,12 +1652,13 @@ export class PluginManager {
 
       // Check if package.json exists and has dependencies
       const packageJsonPath = path.join(pluginDir, "package.json");
+      console.log(`Checking for package.json at: ${packageJsonPath}`);
       if (fs.existsSync(packageJsonPath)) {
         try {
           const packageJson = JSON.parse(
             fs.readFileSync(packageJsonPath, "utf-8")
           );
-          console.log(`Package.json for plugin ${pluginName}:`, packageJson);
+          console.log(`package.json for plugin ${pluginName}:`, packageJson);
 
           // Check if the plugin has a specific protocol configuration
           const protocol = packageJson.protocol || {};
@@ -1755,14 +1884,19 @@ export class PluginManager {
           throw error;
         }
       } else {
-        const error = new Error(`Package.json not found for plugin ${pluginName}`);
+        console.error(`package.json not found at: ${packageJsonPath}`);
+        console.log(`Plugin directory contents:`, fs.existsSync(pluginDir) ? fs.readdirSync(pluginDir) : 'Directory does not exist');
+        console.log(`Main script path: ${mainPath}`);
+        console.log(`Plugin directory: ${pluginDir}`);
+
+        const error = new Error(`package.json not found for plugin ${pluginName}`);
         console.error(error);
 
         // Thông báo lỗi cho renderer process
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
           this.mainWindow.webContents.send('plugin-error', {
             pluginName,
-            error: `Package.json not found. Please reinstall the plugin.`
+            error: `package.json not found. Please reinstall the plugin.`
           });
         }
 
@@ -1906,6 +2040,126 @@ export class PluginManager {
   }
 
   /**
+   * Handle prettier formatting without starting a plugin process
+   */
+  private async handlePrettierFormatting(content: string, filePath?: string, options?: any): Promise<string> {
+    try {
+      console.log('Handling prettier formatting directly');
+
+      // Try to use prettier if available
+      try {
+        // Import prettier dynamically to handle potential missing dependency
+        let prettier: any;
+        try {
+          prettier = require('prettier');
+        } catch (importError) {
+          console.warn('Prettier module not found, attempting to install...');
+          // If prettier is not available, return formatted content using basic formatting
+          return this.basicFormatting(content);
+        }
+
+        // Determine parser based on file extension
+        let parser = 'babel';
+        if (filePath) {
+          const ext = filePath.split('.').pop()?.toLowerCase();
+          switch (ext) {
+            case 'js':
+            case 'jsx':
+              parser = 'babel';
+              break;
+            case 'ts':
+            case 'tsx':
+              parser = 'typescript';
+              break;
+            case 'css':
+              parser = 'css';
+              break;
+            case 'html':
+              parser = 'html';
+              break;
+            case 'json':
+              parser = 'json';
+              break;
+            case 'md':
+              parser = 'markdown';
+              break;
+            case 'cpp':
+            case 'c':
+            case 'h':
+              // For C/C++ files, use basic formatting since prettier doesn't support them
+              return this.basicFormatting(content);
+            default:
+              parser = 'babel';
+          }
+        }
+
+        const formatted = await prettier.format(content, {
+          parser,
+          semi: true,
+          singleQuote: true,
+          tabWidth: 2,
+          trailingComma: 'es5',
+          printWidth: 80,
+          ...options
+        });
+
+        console.log('Content formatted successfully with prettier');
+        return formatted;
+      } catch (prettierError) {
+        console.warn('Prettier formatting failed, using basic formatting:', prettierError);
+        // Fallback to basic formatting
+        return this.basicFormatting(content);
+      }
+    } catch (error) {
+      console.error('Error in prettier formatting:', error);
+      // Return original content if all formatting fails
+      return content;
+    }
+  }
+
+  /**
+   * Basic formatting fallback
+   */
+  private basicFormatting(content: string): string {
+    try {
+      // Try to parse and format as JSON first
+      const parsed = JSON.parse(content);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      // If not JSON, apply basic indentation and formatting
+      const lines = content.split('\n');
+      let indentLevel = 0;
+      const indentSize = 2;
+
+      const formattedLines = lines.map(line => {
+        const trimmedLine = line.trim();
+
+        // Skip empty lines
+        if (!trimmedLine) {
+          return '';
+        }
+
+        // Decrease indent for closing brackets/braces
+        if (trimmedLine.match(/^[\}\]\)]/)) {
+          indentLevel = Math.max(0, indentLevel - 1);
+        }
+
+        // Apply current indentation
+        const formattedLine = ' '.repeat(indentLevel * indentSize) + trimmedLine;
+
+        // Increase indent for opening brackets/braces
+        if (trimmedLine.match(/[\{\[\(]$/)) {
+          indentLevel++;
+        }
+
+        return formattedLine;
+      });
+
+      return formattedLines.join('\n');
+    }
+  }
+
+  /**
    * Start AI Assistant plugin
    */
   private async startAIAssistantPlugin(pluginName: string): Promise<void> {
@@ -1959,7 +2213,7 @@ export class PluginManager {
       let packageJson: any;
 
       if (!fs.existsSync(packageJsonPath)) {
-        console.log(`Package.json not found for plugin ${pluginName}, creating a default one`);
+        console.log(`package.json not found for plugin ${pluginName}, creating a default one`);
         packageJson = {
           name: 'ai-assistant',
           version: '1.0.0',
@@ -1984,7 +2238,7 @@ export class PluginManager {
       } else {
         try {
           packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-          console.log(`Package.json for plugin ${pluginName}:`, packageJson);
+          console.log(`package.json for plugin ${pluginName}:`, packageJson);
 
           // Ensure dependencies object exists
           if (!packageJson.dependencies) {
@@ -2007,6 +2261,16 @@ export class PluginManager {
           if (!packageJson.dependencies.firebase) {
             packageJson.dependencies.firebase = '^11.7.3';
             dependenciesUpdated = true;
+          }
+
+          // Special handling for prettier plugin - add prettier dependency
+          const normalizedPluginName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
+          if (pluginName.includes('prettier') || normalizedPluginName.includes('prettier')) {
+            if (!packageJson.dependencies.prettier) {
+              packageJson.dependencies.prettier = '^3.0.0';
+              dependenciesUpdated = true;
+              console.log(`Added prettier dependency for plugin ${pluginName}`);
+            }
           }
 
           // Update package.json if dependencies were added
@@ -2186,7 +2450,18 @@ connectToEditor();
           try {
             console.log(`Attempting to install specific required packages directly...`);
             const { execSync } = require('child_process');
-            execSync('npm install axios dotenv firebase --no-fund --no-audit --loglevel=error', {
+
+            // Base packages for all plugins
+            let packagesToInstall = 'axios dotenv firebase';
+
+            // Add prettier for prettier plugins
+            const normalizedPluginName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
+            if (pluginName.includes('prettier') || normalizedPluginName.includes('prettier')) {
+              packagesToInstall += ' prettier';
+              console.log(`Adding prettier package for plugin ${pluginName}`);
+            }
+
+            execSync(`npm install ${packagesToInstall} --no-fund --no-audit --loglevel=error`, {
               cwd: pluginDir,
               stdio: 'inherit',
               timeout: 120000
@@ -2497,6 +2772,10 @@ connectToEditor();
           socket,
           message as ExecuteMenuActionMessage
         );
+        break;
+
+      case 'save-file':
+        this.handleSaveFileMessage(socket, message);
         break;
 
       default:
@@ -2847,6 +3126,36 @@ connectToEditor();
     } catch (error) {
       console.error(`Error handling register menu message:`, error);
       // Không ném lỗi, chỉ ghi log
+    }
+  }
+
+  /**
+   * Xử lý thông điệp lưu file từ plugin (cho autosave)
+   */
+  private handleSaveFileMessage(socket: Socket, message: any): void {
+    try {
+      console.log('Received save-file message from plugin');
+
+      if (!message.payload || !message.payload.content || !message.payload.filePath) {
+        console.error('Invalid save-file message: missing content or filePath');
+        return;
+      }
+
+      const { content, filePath } = message.payload;
+      console.log(`Auto-saving file: ${filePath}`);
+
+      // Gửi yêu cầu lưu file đến main window
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('auto-save-file', {
+          content,
+          filePath
+        });
+        console.log(`Auto-save request sent for file: ${filePath}`);
+      } else {
+        console.warn('Main window not available for auto-save');
+      }
+    } catch (error) {
+      console.error('Error handling save-file message:', error);
     }
   }
 

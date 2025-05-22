@@ -63,7 +63,7 @@ export async function getPluginDownloadUrl(pluginRef: StorageReference): Promise
   console.log(`Mock: Tạo URL động dựa trên tên plugin: ${normalizedName}`);
 
   // Sử dụng bucket mặc định cho môi trường mock
-  const mockBucket = 'cosmic-text-editor.appspot.com';
+  const mockBucket = 'cosmic-text-editor.firebasestorage.app';
 
   // Tạo URL dựa trên tên plugin
   let fileName = '';
@@ -100,7 +100,7 @@ export async function getPluginDownloadUrlByName(pluginName: string): Promise<st
   console.log(`Mock: Tạo URL động dựa trên tên plugin: ${normalizedName}`);
 
   // Sử dụng bucket mặc định cho môi trường mock
-  const mockBucket = 'cosmic-text-editor.appspot.com';
+  const mockBucket = 'cosmic-text-editor.firebasestorage.app';
 
   // Tạo URL dựa trên tên plugin
   let fileName = '';

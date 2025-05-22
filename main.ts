@@ -1826,6 +1826,33 @@ ipcMain.on("execute-terminal-command", (event, data: { command: string; workingD
   }
 });
 
+// Xử lý auto-save từ plugin
+ipcMain.on("auto-save-file", async (event, data: { content: string; filePath: string }) => {
+  try {
+    console.log(`Auto-saving file: ${data.filePath}`);
+
+    // Kiểm tra xem file có tồn tại không
+    if (!fs.existsSync(data.filePath)) {
+      console.warn(`Auto-save: File ${data.filePath} does not exist, skipping auto-save`);
+      return;
+    }
+
+    // Lưu file
+    fs.writeFileSync(data.filePath, data.content, "utf-8");
+    console.log(`Auto-saved file: ${data.filePath}`);
+
+    // Thông báo cho renderer process (tùy chọn)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("file-auto-saved", {
+        filePath: data.filePath,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error: any) {
+    console.error(`Error auto-saving file ${data.filePath}:`, error);
+  }
+});
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     // Dừng Plugin Manager trước khi thoát
