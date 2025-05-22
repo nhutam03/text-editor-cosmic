@@ -66,6 +66,12 @@ export class PluginInstaller {
     try {
       console.log(`Installing plugin by name: ${pluginName}`);
 
+      // Xử lý đặc biệt cho export-to-pdf
+      if (pluginName === "export-to-pdf") {
+        console.log("Using direct installation for export-to-pdf plugin");
+        return await this.installExportToPdfPlugin();
+      }
+
       // Normalize plugin name (remove version suffix if present)
       const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
       console.log(`Normalized plugin name: ${normalizedName}`);
@@ -1155,6 +1161,54 @@ export class PluginInstaller {
       }
 
       // Ghi file extensions.json
+      fs.writeFileSync(extensionsJsonPath, JSON.stringify(extensions, null, 2), 'utf8');
+      console.log(`Updated extensions.json for plugin ${pluginName}, installed: ${isInstalled}`);
+    } catch (error) {
+      console.error(`Error updating extensions.json for plugin ${pluginName}:`, error);
+    }
+  }
+
+  /**
+   * Cài đặt trực tiếp plugin export-to-pdf
+   */
+  private async installExportToPdfPlugin(): Promise<PluginInfo> {
+    try {
+      console.log('Installing export-to-pdf plugin directly');
+
+      // Tạo thư mục plugin
+      const pluginDir = path.join(this.pluginsDir, 'export-to-pdf');
+      console.log(`Creating plugin directory at ${pluginDir}`);
+
+      // Xóa thư mục cũ nếu tồn tại
+      if (fs.existsSync(pluginDir)) {
+        console.log(`Removing existing plugin directory: ${pluginDir}`);
+        fs.rmSync(pluginDir, { recursive: true, force: true });
+      }
+
+      // Tạo thư mục mới
+      fs.mkdirSync(pluginDir, { recursive: true });
+
+      // Tạo file package.json
+      const packageJson = {
+        "name": "export-to-pdf",
+        "version": "1.0.0",
+        "description": "Export document to PDF",
+        "main": "index.js",
+        "author": "nhtam",
+        "dependencies": {
+          "pdfkit": "^0.13.0"
+        },
+        "menuItems": [
+          {
+            "id": "export-to-pdf.exportToPdf",
+            "label": "Export to PDF",
+            "parentMenu": "file",
+            "accelerator": "CmdOrCtrl+E"
+          }
+        ]
+      };
+
+      // Ghi file package.json
       fs.writeFileSync(
         extensionsJsonPath,
         JSON.stringify(extensions, null, 2),

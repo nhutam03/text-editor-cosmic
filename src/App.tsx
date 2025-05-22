@@ -398,8 +398,17 @@ const App: React.FC = () => {
       // Lưu trạng thái để biết rằng chúng ta vừa dừng chạy code
       window.lastAction = "stop-execution";
 
-      // Không tự động focus vào editor
-      // Để người dùng tự do điều khiển focus
+      // Lưu lại editor element trước khi gửi yêu cầu dừng chạy code
+      const editorElement = document.querySelector(".monaco-editor");
+
+      // Đặt timeout để focus lại vào editor sau khi terminal được cập nhật
+      setTimeout(() => {
+        if (editorElement) {
+          console.log("Focusing editor after stop execution request");
+          (editorElement as HTMLElement).click();
+          (editorElement as HTMLElement).focus();
+        }
+      }, 500);
     }
     closeAllMenus();
   };
@@ -523,8 +532,16 @@ const App: React.FC = () => {
         e.preventDefault();
         handleStopExecution();
 
-        // Không tự động focus vào editor
-        // Để người dùng tự do điều khiển focus
+        // Đặt timeout để focus lại vào editor sau khi dừng chạy code
+        setTimeout(() => {
+          // Tìm editor và focus vào nó
+          const editorElement = document.querySelector(".monaco-editor");
+          if (editorElement) {
+            console.log("Focusing editor after Shift+F5 key press");
+            (editorElement as HTMLElement).click();
+            (editorElement as HTMLElement).focus();
+          }
+        }, 300);
       }
       // Shift+Alt+F để định dạng mã với Prettier
       if (e.shiftKey && e.altKey && e.key === "F") {
@@ -679,8 +696,17 @@ const App: React.FC = () => {
         (prev) => prev + `\n--- STOPPED ---\n${result.message}\n`
       );
 
-      // Không tự động focus vào terminal hoặc editor
-      // Để người dùng tự do điều khiển focus
+      // Không focus lại vào editor sau khi dừng chạy code
+      // Giữ focus ở terminal
+
+      // Đảm bảo terminal vẫn giữ focus sau khi dừng thực thi
+      setTimeout(() => {
+        const terminalElement = document.querySelector('[tabindex="0"]');
+        if (terminalElement) {
+          console.log("Refocusing terminal after stopping execution");
+          (terminalElement as HTMLElement).focus();
+        }
+      }, 50);
     };
 
     // Đăng ký các listener
@@ -1124,6 +1150,19 @@ const App: React.FC = () => {
   useEffect(() => {
     console.log("File tabs updated, current openFiles:", openFiles);
   }, [openFiles]);
+
+  const handleGlobalSearch = (query: string) => {
+    if (!query.trim() || !selectedFolder) return;
+
+    console.log("Searching for:", query);
+    window.electron.ipcRenderer.send("search-in-files", {
+      query,
+      folder: selectedFolder,
+    });
+
+    // Switch to search tab
+    setActiveTab("search");
+  };
 
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-white">
