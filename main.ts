@@ -112,8 +112,9 @@ async function initializePluginManager() {
       console.warn("Main window not available when initializing Plugin Manager");
     }
 
-    // Đăng ký AI Assistant menu item tích hợp sẵn
+    // Đăng ký AI Assistant menu items tích hợp sẵn
     try {
+      // AI Chat trong View menu
       pluginManager.registerBuiltInMenuItem({
         id: 'built-in-ai-assistant.aiChat',
         label: 'AI Chat',
@@ -121,9 +122,37 @@ async function initializePluginManager() {
         shortcut: 'Alt+A',
         pluginId: 'built-in-ai-assistant'
       });
-      console.log("Built-in AI Assistant menu item registered");
+
+      // Complete Code trong Edit menu
+      pluginManager.registerBuiltInMenuItem({
+        id: 'built-in-ai-assistant.completeCode',
+        label: 'Complete Code',
+        parentMenu: 'edit',
+        shortcut: 'Alt+C',
+        pluginId: 'built-in-ai-assistant'
+      });
+
+      // Explain Code trong Edit menu
+      pluginManager.registerBuiltInMenuItem({
+        id: 'built-in-ai-assistant.explainCode',
+        label: 'Explain Code',
+        parentMenu: 'edit',
+        shortcut: 'Alt+E',
+        pluginId: 'built-in-ai-assistant'
+      });
+
+      // Generate Code trong Edit menu
+      pluginManager.registerBuiltInMenuItem({
+        id: 'built-in-ai-assistant.generateCode',
+        label: 'Generate Code',
+        parentMenu: 'edit',
+        shortcut: 'Alt+G',
+        pluginId: 'built-in-ai-assistant'
+      });
+
+      console.log("Built-in AI Assistant menu items registered");
     } catch (menuError) {
-      console.error("Error registering built-in AI Assistant menu item:", menuError);
+      console.error("Error registering built-in AI Assistant menu items:", menuError);
     }
 
     // Đăng ký callback khi danh sách plugin thay đổi
@@ -1463,15 +1492,108 @@ app.whenReady().then(async () => {
 
         // Kiểm tra xem có phải AI Assistant tích hợp không
         if (pluginId === 'built-in-ai-assistant') {
-          console.log(`🤖 [Main] Executing built-in AI Assistant menu action`);
+          console.log(`🤖 [Main] Executing built-in AI Assistant menu action: ${menuItemId}`);
 
-          // Mở AI Chat dialog
-          event.reply("menu-action-result", {
-            success: true,
-            message: `AI Chat opened successfully`,
-            data: { action: 'open-ai-chat' },
-          });
-          return;
+          // Xử lý các menu actions khác nhau
+          switch (menuItemId) {
+            case 'built-in-ai-assistant.aiChat':
+              // Mở AI Chat dialog
+              event.reply("menu-action-result", {
+                success: true,
+                message: `AI Chat opened successfully`,
+                data: { action: 'open-ai-chat' },
+              });
+              return;
+
+            case 'built-in-ai-assistant.completeCode':
+              // Xử lý Complete Code với AI Service
+              try {
+                const aiService = AIService.getInstance();
+                const aiRequest = {
+                  prompt: content,
+                  systemPrompt: 'You are a helpful coding assistant. Complete the code below in the same style and language. Only provide the completed code, no explanations.',
+                  maxTokens: 1000,
+                  temperature: 0.7
+                };
+                const aiResponse = await aiService.sendMessage(aiRequest);
+
+                if (aiResponse.success) {
+                  event.reply("menu-action-result", {
+                    success: true,
+                    message: `Code completed successfully`,
+                    data: { formattedText: aiResponse.content },
+                  });
+                } else {
+                  event.reply("menu-action-result", {
+                    success: false,
+                    message: aiResponse.error || 'Failed to complete code',
+                  });
+                }
+              } catch (error: any) {
+                event.reply("menu-action-result", {
+                  success: false,
+                  message: `Error completing code: ${error.message}`,
+                });
+              }
+              return;
+
+            case 'built-in-ai-assistant.explainCode':
+              // Xử lý Explain Code với AI Service
+              try {
+                const aiService = AIService.getInstance();
+                const aiRequest = {
+                  prompt: content,
+                  systemPrompt: 'You are a helpful coding assistant. Explain the following code in detail, including what it does and how it works. Respond in Vietnamese.',
+                  maxTokens: 1000,
+                  temperature: 0.7
+                };
+                const aiResponse = await aiService.sendMessage(aiRequest);
+
+                if (aiResponse.success) {
+                  // Mở AI Chat với explanation
+                  event.reply("menu-action-result", {
+                    success: true,
+                    message: `Code explained successfully`,
+                    data: {
+                      action: 'open-ai-chat-with-response',
+                      response: aiResponse.content,
+                      title: 'Code Explanation'
+                    },
+                  });
+                } else {
+                  event.reply("menu-action-result", {
+                    success: false,
+                    message: aiResponse.error || 'Failed to explain code',
+                  });
+                }
+              } catch (error: any) {
+                event.reply("menu-action-result", {
+                  success: false,
+                  message: `Error explaining code: ${error.message}`,
+                });
+              }
+              return;
+
+            case 'built-in-ai-assistant.generateCode':
+              // Mở AI Chat với prompt cho Generate Code
+              event.reply("menu-action-result", {
+                success: true,
+                message: `Generate Code dialog opened successfully`,
+                data: {
+                  action: 'open-ai-chat-with-prompt',
+                  initialPrompt: 'Generate code for:',
+                  title: 'Generate Code'
+                },
+              });
+              return;
+
+            default:
+              event.reply("menu-action-result", {
+                success: false,
+                message: `Unknown AI Assistant menu action: ${menuItemId}`,
+              });
+              return;
+          }
         }
 
         // Kiểm tra xem plugin có được đăng ký không
@@ -1537,263 +1659,26 @@ app.whenReady().then(async () => {
   );
 });
 
-// Chạy code
-ipcMain.on(
-  "run-code",
-  async (event, data: { code: string; fileName: string; language: string }) => {
-    try {
-      console.log(
-        `Running code in ${data.language} language, code length: ${
-          data.code?.length || 0
-        }`
-      );
+// Mở terminal để gõ lệnh (thay thế cho run-code)
+ipcMain.on("open-terminal", (event, data: { fileName?: string; language?: string }) => {
+  try {
+    console.log("Opening terminal for manual command input");
 
-      // Tạo file tạm thời để chạy code
-      const tempDir = path.join(app.getPath("temp"), "text-editor-code-runner");
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-
-      // Xác định tên file và lệnh chạy dựa trên ngôn ngữ
-      let tempFile = "";
-      let command = "";
-      let args: string[] = [];
-
-      switch (data.language) {
-        case "js":
-          tempFile = path.join(tempDir, "temp.js");
-          command = "node";
-          args = [tempFile];
-          break;
-        case "py":
-          tempFile = path.join(tempDir, "temp.py");
-          command = "python";
-          args = [tempFile];
-          break;
-        case "ts":
-          tempFile = path.join(tempDir, "temp.ts");
-          command = "npx";
-          args = ["ts-node", tempFile];
-          break;
-        case "cpp":
-          tempFile = path.join(tempDir, "temp.cpp");
-          // Biên dịch và chạy file C++
-          // Đầu tiên, biên dịch file C++ thành file thực thi
-          const executableFile = path.join(tempDir, "temp.exe");
-          fs.writeFileSync(tempFile, data.code);
-
-          // Kiểm tra xem có trình biên dịch tích hợp không
-          // Danh sách các đường dẫn có thể có trình biên dịch
-          const possibleCompilerPaths = [
-            // Thư mục plugins trong project
-            path.join(
-              __dirname,
-              "..",
-              "plugins",
-              "code-runner",
-              "bin",
-              "win32",
-              "bin",
-              "g++.exe"
-            ),
-
-            // Thư mục plugins trong AppData
-            path.join(
-              app.getPath("userData"),
-              "plugins",
-              "code-runner",
-              "bin",
-              "win32",
-              "bin",
-              "g++.exe"
-            ),
-            path.join(
-              app.getPath("userData"),
-              "plugins",
-              "code-runner-1.1.0",
-              "bin",
-              "win32",
-              "bin",
-              "g++.exe"
-            ),
-
-            // Đường dẫn mặc định của MinGW
-            "C:\\MinGW\\bin\\g++.exe",
-            "C:\\msys64\\mingw64\\bin\\g++.exe",
-          ];
-
-          // Tìm trình biên dịch trong các đường dẫn có thể
-          let integratedCompilerPath = "";
-          for (const compilerPath of possibleCompilerPaths) {
-            console.log(`Checking for compiler at: ${compilerPath}`);
-            if (fs.existsSync(compilerPath)) {
-              console.log(`Found compiler at: ${compilerPath}`);
-              integratedCompilerPath = compilerPath;
-              break;
-            }
-          }
-
-          // Sử dụng trình biên dịch tích hợp nếu có, nếu không thì sử dụng g++ hệ thống
-          let gppPath = "g++";
-
-          if (integratedCompilerPath) {
-            gppPath = integratedCompilerPath;
-            console.log(`Using integrated compiler: ${gppPath}`);
-          } else {
-            console.log("No integrated compiler found, using system g++");
-          }
-          console.log(`Using C++ compiler: ${gppPath}`);
-
-          // Sử dụng g++ để biên dịch
-          const compileProcess = spawn(gppPath, [
-            tempFile,
-            "-o",
-            executableFile,
-          ]);
-          let compileError = "";
-
-          compileProcess.stderr.on("data", (data) => {
-            compileError += data.toString();
-          });
-
-          compileProcess.on("close", (code) => {
-            if (code !== 0) {
-              // Biên dịch thất bại
-              event.reply("run-code-result", {
-                success: false,
-                message: `Compilation failed with exit code ${code}`,
-                output: "",
-                error: compileError,
-                exitCode: code,
-              });
-              return;
-            }
-
-            // Biên dịch thành công, chạy file thực thi
-            const runProcess = spawn(executableFile, []);
-            let output = "";
-            let errorOutput = "";
-
-            // Lưu trữ process để có thể dừng nó sau này
-            runningProcesses.set(data.fileName, runProcess);
-
-            runProcess.stdout.on("data", (data) => {
-              const text = data.toString();
-              output += text;
-              // Gửi kết quả trực tiếp đến renderer
-              event.reply("run-code-output", {
-                type: "stdout",
-                text: text,
-              });
-            });
-
-            runProcess.stderr.on("data", (data) => {
-              const text = data.toString();
-              errorOutput += text;
-              // Gửi lỗi trực tiếp đến renderer
-              event.reply("run-code-output", {
-                type: "stderr",
-                text: text,
-              });
-            });
-
-            runProcess.on("close", (code) => {
-              console.log(`C++ process exited with code ${code}`);
-              runningProcesses.delete(data.fileName);
-
-              // Gửi kết quả cuối cùng
-              event.reply("run-code-result", {
-                success: code === 0,
-                message:
-                  code === 0
-                    ? "Code executed successfully"
-                    : `Code execution failed with exit code ${code}`,
-                output: output,
-                error: errorOutput,
-                exitCode: code,
-              });
-            });
-          });
-          return;
-        case "html":
-          tempFile = path.join(tempDir, "temp.html");
-          // Mở file HTML trong trình duyệt mặc định
-          fs.writeFileSync(tempFile, data.code);
-          shell.openExternal(`file://${tempFile}`);
-          event.reply("run-code-result", {
-            success: true,
-            message: `Opened HTML file in default browser`,
-            output: "",
-          });
-          return;
-        default:
-          event.reply("run-code-result", {
-            success: false,
-            message: `Unsupported language: ${data.language}`,
-            output: "",
-          });
-          return;
-      }
-
-      // Ghi code vào file tạm thời
-      fs.writeFileSync(tempFile, data.code);
-
-      // Chạy code
-      const childProcess = spawn(command, args);
-      let output = "";
-      let errorOutput = "";
-
-      // Lưu trữ process để có thể dừng nó sau này
-      runningProcesses.set(data.fileName, childProcess);
-
-      childProcess.stdout.on("data", (data) => {
-        const text = data.toString();
-        output += text;
-        // Gửi kết quả trực tiếp đến renderer
-        event.reply("run-code-output", {
-          type: "stdout",
-          text: text,
-        });
-      });
-
-      childProcess.stderr.on("data", (data) => {
-        const text = data.toString();
-        errorOutput += text;
-        // Gửi lỗi trực tiếp đến renderer
-        event.reply("run-code-output", {
-          type: "stderr",
-          text: text,
-        });
-      });
-
-      childProcess.on("close", (code) => {
-        console.log(`Child process exited with code ${code}`);
-        runningProcesses.delete(data.fileName);
-
-        // Gửi kết quả cuối cùng
-        event.reply("run-code-result", {
-          success: code === 0,
-          message:
-            code === 0
-              ? "Code executed successfully"
-              : `Code execution failed with exit code ${code}`,
-          output: output,
-          error: errorOutput,
-          exitCode: code,
-        });
-      });
-    } catch (error: any) {
-      console.error(`Error running code:`, error);
-      event.reply("run-code-result", {
-        success: false,
-        message: `Error: ${error.message || String(error)}`,
-        output: "",
-        error: error.message || String(error),
-        exitCode: 1,
-      });
-    }
+    // Gửi thông báo để mở terminal panel
+    event.reply("terminal-opened", {
+      success: true,
+      message: "Terminal ready for commands",
+      fileName: data.fileName,
+      language: data.language
+    });
+  } catch (error: any) {
+    console.error("Error opening terminal:", error);
+    event.reply("terminal-opened", {
+      success: false,
+      message: `Error: ${error.message || String(error)}`
+    });
   }
-);
+});
 
 // Dừng chạy code
 ipcMain.on("stop-execution", (event, fileName?: string) => {

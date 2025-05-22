@@ -41,6 +41,9 @@ const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 interface AIChatProps {
   onClose: () => void;
+  initialPrompt?: string;
+  initialResponse?: string;
+  title?: string;
 }
 
 interface ChatMessage {
@@ -48,11 +51,23 @@ interface ChatMessage {
   content: string;
 }
 
-const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: 'Xin chào! Tôi là trợ lý AI. Tôi có thể giúp gì cho bạn về lập trình?' }
-  ]);
-  const [input, setInput] = useState('');
+const AIChat: React.FC<AIChatProps> = ({ onClose, initialPrompt, initialResponse, title }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const defaultMessages = [
+      { role: 'assistant' as const, content: 'Xin chào! Tôi là trợ lý AI. Tôi có thể giúp gì cho bạn về lập trình?' }
+    ];
+
+    // Nếu có initial response, thêm vào messages
+    if (initialResponse) {
+      return [
+        ...defaultMessages,
+        { role: 'assistant' as const, content: initialResponse }
+      ];
+    }
+
+    return defaultMessages;
+  });
+  const [input, setInput] = useState(initialPrompt || '');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -165,7 +180,7 @@ const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
     <div className="ai-chat-container fixed bottom-4 right-4 w-96 h-[500px] bg-[#252526] border border-gray-700 rounded-lg shadow-lg flex flex-col z-50">
       {/* Header */}
       <div className="flex justify-between items-center p-3 border-b border-gray-700">
-        <h3 className="text-white font-medium">AI Assistant</h3>
+        <h3 className="text-white font-medium">{title || 'AI Assistant'}</h3>
         <Button
           variant="ghost"
           size="sm"

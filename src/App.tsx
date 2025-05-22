@@ -40,6 +40,11 @@ const App: React.FC = () => {
   const [showRunMenu, setShowRunMenu] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
+  const [aiChatData, setAiChatData] = useState<{
+    initialPrompt?: string;
+    initialResponse?: string;
+    title?: string;
+  }>({});
   // Vẫn giữ lại state này để sử dụng cho các plugin khác
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
@@ -434,6 +439,7 @@ const App: React.FC = () => {
 
   // Hàm xử lý hiển thị AI Chat
   const handleShowAIChat = () => {
+    setAiChatData({}); // Reset AI chat data
     setShowAIChat(true);
     closeAllMenus();
   };
@@ -441,6 +447,7 @@ const App: React.FC = () => {
   // Hàm xử lý đóng AI Chat
   const handleCloseAIChat = () => {
     setShowAIChat(false);
+    setAiChatData({}); // Reset AI chat data
   };
 
   const handleCloseFile = (fileName: string) => {
@@ -956,6 +963,7 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.removeAllListeners("plugin-uninstall-error");
     window.electron.ipcRenderer.removeAllListeners("ai-assistant-uninstalled");
     window.electron.ipcRenderer.removeAllListeners("plugin-disconnected");
+    window.electron.ipcRenderer.removeAllListeners("show-ai-chat");
 
     // Listen for plugin list updates
     window.electron.ipcRenderer.on("plugin-list", handlePluginListUpdate);
@@ -1186,7 +1194,7 @@ const App: React.FC = () => {
     result: {
       success: boolean;
       message: string;
-      data?: { formattedText?: string; action?: string; [key: string]: any };
+      data?: { formattedText?: string; action?: string; suggestedCommand?: string; [key: string]: any };
     }
   ) => {
     console.log("Menu action result:", result);
@@ -1197,7 +1205,46 @@ const App: React.FC = () => {
       // Check if this is an AI Chat action
       if (result.data && result.data.action === 'open-ai-chat') {
         console.log("Opening AI Chat from menu action");
+        setAiChatData({});
         setShowAIChat(true);
+        return;
+      }
+
+      // Check if this is an AI Chat with prompt action (for Generate Code)
+      if (result.data && result.data.action === 'open-ai-chat-with-prompt') {
+        console.log("Opening AI Chat with prompt from menu action");
+        setAiChatData({
+          initialPrompt: result.data.initialPrompt,
+          title: result.data.title
+        });
+        setShowAIChat(true);
+        return;
+      }
+
+      // Check if this is an AI Chat with response action (for Explain Code)
+      if (result.data && result.data.action === 'open-ai-chat-with-response') {
+        console.log("Opening AI Chat with response from menu action");
+        setAiChatData({
+          initialResponse: result.data.response,
+          title: result.data.title
+        });
+        setShowAIChat(true);
+        return;
+      }
+
+      // Check if this is an open terminal action
+      if (result.data && result.data.action === 'open-terminal') {
+        console.log("Opening terminal from menu action");
+        setShowTerminal(true);
+
+        // Hiển thị gợi ý lệnh nếu có
+        if (result.data.suggestedCommand) {
+          setTerminalOutput((prev) =>
+            prev + `Terminal ready for commands\nSuggested command: ${result.data.suggestedCommand}\n`
+          );
+        } else {
+          setTerminalOutput((prev) => prev + "Terminal ready for commands\n");
+        }
         return;
       }
 
@@ -1473,34 +1520,7 @@ const App: React.FC = () => {
             {showRunMenu && (
               <div className="absolute top-full left-0 bg-[#252526] shadow-lg z-50 w-48">
                 <div className="p-1">
-                  <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      console.log("Run Code menu item clicked");
-                      handleRunCode();
-                    }}
-                  >
-                    <Play size={16} className="mr-2" />
-                    <span>Run Code</span>
-                    <span className="ml-auto text-xs text-gray-400">F5</span>
-                  </div>
-                  <div
-                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      console.log("Stop Execution menu item clicked");
-                      handleStopExecution();
-                    }}
-                  >
-                    <Square size={16} className="mr-2" />
-                    <span>Stop Execution</span>
-                    <span className="ml-auto text-xs text-gray-400">
-                      Shift+F5
-                    </span>
-                  </div>
-
-                  {/* Hiển thị các menu item từ plugin */}
+                  {/* Chỉ hiển thị các menu item từ plugin */}
                   {pluginMenuItems
                     .filter((item) => item.parentMenu.toLowerCase() === "run")
                     .map((menuItem) => (
@@ -1708,7 +1728,14 @@ const App: React.FC = () => {
       {/* Terminal đã được di chuyển vào bên trong editor */}
 
       {/* AI Chat */}
-      {showAIChat && <AIChat onClose={handleCloseAIChat} />}
+      {showAIChat && (
+        <AIChat
+          onClose={handleCloseAIChat}
+          initialPrompt={aiChatData.initialPrompt}
+          initialResponse={aiChatData.initialResponse}
+          title={aiChatData.title}
+        />
+      )}
 
       {/* Status Bar */}
       <div className="flex items-center justify-between bg-[#007acc] text-white text-xs h-[22px] px-2">

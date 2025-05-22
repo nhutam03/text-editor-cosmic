@@ -664,6 +664,17 @@ export class PluginManager {
     const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, "");
     console.log(`Normalized plugin name: ${normalizedName}`);
 
+    // KIỂM TRA QUAN TRỌNG: Đảm bảo plugin vẫn được cài đặt
+    const installedPlugins = this.pluginInstaller.getInstalledPlugins();
+    const isStillInstalled = installedPlugins.some(
+      (p) => p.name === pluginName || p.name === normalizedName
+    );
+
+    if (!isStillInstalled) {
+      console.error(`Plugin ${pluginName} is no longer installed`);
+      throw new Error(`Plugin ${pluginName} has been uninstalled and is no longer available`);
+    }
+
     // Try both original and normalized names
     let plugin =
       this.plugins.get(pluginName) || this.plugins.get(normalizedName);
@@ -675,16 +686,11 @@ export class PluginManager {
       );
 
       // Check if the plugin is installed but not registered
-      const installedPlugins = this.pluginInstaller.getInstalledPlugins();
       console.log(
         `Installed plugins: ${installedPlugins.map((p) => p.name).join(", ")}`
       );
 
-      const isInstalled = installedPlugins.some(
-        (p) => p.name === pluginName || p.name === normalizedName
-      );
-
-      if (isInstalled) {
+      if (isStillInstalled) {
         console.log(
           `Plugin ${pluginName} is installed but not registered. Attempting to start it...`
         );
@@ -1353,32 +1359,86 @@ export class PluginManager {
         // Tiếp tục ngay cả khi có lỗi
       }
 
-      // 4. Xóa menu items của plugin
+      // 4. Xóa menu items của plugin - Cải thiện logic
       try {
         console.log(`PluginManager: Removing menu items for plugin: ${pluginName}`);
+
+        // Lấy tất cả menu items hiện tại để debug
+        const allMenuItems = this.menuRegistry.getMenuItems();
+        console.log(`PluginManager: Current menu items before removal:`,
+          allMenuItems.map(item => ({ id: item.id, pluginId: item.pluginId, label: item.label })));
 
         const menuPluginsToRemove = [pluginName, normalizedName];
 
         // Nếu là AI Assistant, tìm tất cả menu items có pluginId chứa 'ai-assistant'
         if (isAIAssistantPlugin) {
           // Lấy tất cả menu items hiện tại và tìm những cái có pluginId chứa 'ai-assistant'
-          const allMenuItems = this.menuRegistry.getMenuItems();
           const aiMenuPluginIds = [...new Set(
             allMenuItems
               .filter(item => item.pluginId && this.isAIAssistantPlugin(item.pluginId))
               .map(item => item.pluginId!)
           )];
           menuPluginsToRemove.push(...aiMenuPluginIds);
+          console.log(`PluginManager: Found AI Assistant menu plugin IDs:`, aiMenuPluginIds);
         }
 
-        for (const menuPluginName of menuPluginsToRemove) {
-          try {
-            this.menuRegistry.unregisterMenuItemsByPlugin(menuPluginName);
-            console.log(`PluginManager: Successfully removed menu items for: ${menuPluginName}`);
-          } catch (menuError) {
-            console.error(`PluginManager: Error removing menu items for ${menuPluginName}:`, menuError);
+        // Thêm tất cả các biến thể tên có thể có
+        const additionalVariants = [
+          pluginName.toLowerCase(),
+          normalizedName.toLowerCase(),
+          pluginName.replace(/[^a-zA-Z0-9]/g, '-'),
+          normalizedName.replace(/[^a-zA-Z0-9]/g, '-')
+        ];
+        menuPluginsToRemove.push(...additionalVariants);
+
+        // Tìm tất cả menu items có pluginId khớp với bất kỳ biến thể nào
+        const menuItemsToRemove = allMenuItems.filter(item => {
+          if (!item.pluginId) return false;
+
+          // Kiểm tra khớp chính xác
+          if (menuPluginsToRemove.includes(item.pluginId)) return true;
+
+          // Kiểm tra khớp với pattern (cho trường hợp có version suffix)
+          return menuPluginsToRemove.some(variant =>
+            item.pluginId!.startsWith(variant) ||
+            item.pluginId!.includes(variant) ||
+            variant.includes(item.pluginId!)
+          );
+        });
+
+        console.log(`PluginManager: Menu items to remove:`,
+          menuItemsToRemove.map(item => ({ id: item.id, pluginId: item.pluginId, label: item.label })));
+
+        // Xóa menu items theo plugin ID
+        try {
+          // Xóa từng menu item riêng lẻ
+          for (const menuItem of menuItemsToRemove) {
+            try {
+              this.menuRegistry.unregisterMenuItemsByPlugin(menuItem.pluginId!);
+              console.log(`PluginManager: Successfully removed menu items for pluginId: ${menuItem.pluginId}`);
+            } catch (menuError) {
+              console.error(`PluginManager: Error removing menu items for pluginId ${menuItem.pluginId}:`, menuError);
+            }
           }
+
+          // Xóa theo danh sách plugin names để đảm bảo
+          for (const menuPluginName of menuPluginsToRemove) {
+            try {
+              this.menuRegistry.unregisterMenuItemsByPlugin(menuPluginName);
+              console.log(`PluginManager: Successfully removed menu items for: ${menuPluginName}`);
+            } catch (menuError) {
+              console.error(`PluginManager: Error removing menu items for ${menuPluginName}:`, menuError);
+            }
+          }
+        } catch (menuRemovalError) {
+          console.error(`PluginManager: Error in menu removal process:`, menuRemovalError);
         }
+
+        // Kiểm tra kết quả sau khi xóa
+        const remainingMenuItems = this.menuRegistry.getMenuItems();
+        console.log(`PluginManager: Remaining menu items after removal:`,
+          remainingMenuItems.map(item => ({ id: item.id, pluginId: item.pluginId, label: item.label })));
+
       } catch (menuRemovalError) {
         console.error(`PluginManager: Error in menu removal process:`, menuRemovalError);
         // Tiếp tục ngay cả khi có lỗi
@@ -1437,8 +1497,8 @@ export class PluginManager {
         console.warn(`PluginManager: onPluginListChanged is not a function`);
       }
 
-      // Cập nhật menu items - với xử lý lỗi cải tiến
-      setTimeout(() => {
+      // Cập nhật menu items ngay lập tức - với xử lý lỗi cải tiến
+      const updateMenuItems = () => {
         try {
           // Lấy danh sách menu items cho các menu cha
           const fileMenuItems = this.getMenuItemsForParent("file");
@@ -1475,11 +1535,24 @@ export class PluginManager {
             this.mainWindow.webContents.send("edit-menu-items", editMenuItems);
             this.mainWindow.webContents.send("run-menu-items", runMenuItems);
             this.mainWindow.webContents.send("view-menu-items", viewMenuItems);
+
+            // Gửi thông báo đặc biệt để force refresh menu
+            this.mainWindow.webContents.send("force-menu-refresh", {
+              reason: "plugin-uninstalled",
+              pluginName: pluginName,
+              timestamp: Date.now()
+            });
           }
         } catch (menuError) {
           console.error(`PluginManager: Error updating menu items:`, menuError);
         }
-      }, 1000); // Tăng thời gian chờ lên 1 giây
+      };
+
+      // Cập nhật ngay lập tức
+      updateMenuItems();
+
+      // Cập nhật lại sau 500ms để đảm bảo
+      setTimeout(updateMenuItems, 500);
     } catch (error) {
       console.error(
         `PluginManager: Error notifying plugin list changed:`,
@@ -1527,18 +1600,12 @@ export class PluginManager {
       for (const pluginInfo of installedPlugins) {
         console.log(`Starting plugin: ${pluginInfo.name}`);
 
-        // Skip auto-starting plugins that are not AI Assistant for now
-        // to avoid startup errors
-        if (!this.isAIAssistantPlugin(pluginInfo.name)) {
-          console.log(`Skipping auto-start for non-AI plugin: ${pluginInfo.name}`);
-          continue;
-        }
-
         try {
           await this.startPlugin(pluginInfo.name);
           console.log(`Successfully started plugin: ${pluginInfo.name}`);
         } catch (error) {
           console.error(`Error starting plugin ${pluginInfo.name}:`, error);
+          // Continue with other plugins even if one fails
         }
       }
     } catch (error) {
@@ -2778,6 +2845,10 @@ connectToEditor();
         this.handleSaveFileMessage(socket, message);
         break;
 
+      case 'show-ai-chat':
+        this.handleShowAIChatMessage(socket, message);
+        break;
+
       default:
         console.warn(`Unknown message type: ${message.type}`);
     }
@@ -3156,6 +3227,37 @@ connectToEditor();
       }
     } catch (error) {
       console.error('Error handling save-file message:', error);
+    }
+  }
+
+  /**
+   * Xử lý thông điệp hiển thị AI Chat từ plugin
+   */
+  private handleShowAIChatMessage(_socket: Socket, message: any): void {
+    try {
+      console.log('Received show-ai-chat message from plugin:', message);
+
+      // Kiểm tra message payload
+      if (!message.payload) {
+        console.error('Invalid show-ai-chat message: missing payload');
+        return;
+      }
+
+      const { title, initialPrompt } = message.payload;
+      console.log(`Opening AI Chat with title: "${title}", initial prompt: "${initialPrompt}"`);
+
+      // Gửi yêu cầu mở AI Chat đến main window
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('show-ai-chat', {
+          title: title || 'AI Assistant',
+          initialPrompt: initialPrompt || ''
+        });
+        console.log(`AI Chat open request sent with title: "${title}"`);
+      } else {
+        console.warn('Main window not available for opening AI Chat');
+      }
+    } catch (error) {
+      console.error('Error handling show-ai-chat message:', error);
     }
   }
 
