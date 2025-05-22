@@ -708,7 +708,7 @@ app.whenReady().then(async () => {
 
 
 
-  // Cài đặt plugin - Cải thiện với error handling tốt hơn
+  // Cài đặt plugin - Cải thiện với error handling tốt hơi và timeout
   ipcMain.handle("install-plugin", async (event, pluginName) => {
     console.log(`Main process: Installing plugin ${pluginName}`);
 
@@ -719,9 +719,21 @@ app.whenReady().then(async () => {
     }
 
     try {
-      // Gọi installPlugin với error handling cải thiện
+      // Đảm bảo pluginManager tồn tại
+      if (!pluginManager) {
+        console.error(`Main process: PluginManager not initialized`);
+        return { success: false, message: "Plugin system not available" };
+      }
+
+      // Gọi installPlugin với timeout để tránh hang
       console.log(`Main process: Calling pluginManager.installPlugin for ${pluginName}`);
-      const result = await pluginManager.installPlugin(pluginName);
+
+      const installPromise = pluginManager.installPlugin(pluginName);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Installation timeout after 120 seconds')), 120000);
+      });
+
+      const result = await Promise.race([installPromise, timeoutPromise]);
       console.log(`Main process: Plugin ${pluginName} installed successfully`, result);
 
       // Gửi danh sách plugin mới cho renderer với error handling cải tiến
@@ -800,7 +812,7 @@ app.whenReady().then(async () => {
       return {
         success: true,
         message: `Plugin ${pluginName} installed successfully`,
-        ...result
+        ...(result && typeof result === 'object' ? result : {})
       };
     } catch (error) {
       console.error(`Main process: Error installing plugin ${pluginName}:`, error);
@@ -830,7 +842,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Gỡ cài đặt plugin - Đơn giản hóa tối đa
+  // Gỡ cài đặt plugin - Cải thiện với timeout và error handling tốt hơn
   ipcMain.handle(
     "uninstall-plugin",
     async (
@@ -845,15 +857,28 @@ app.whenReady().then(async () => {
         return { success: false, message: "Invalid plugin name" };
       }
 
-      // Gọi uninstallPlugin với error handling cải thiện
       try {
+        // Đảm bảo pluginManager tồn tại
+        if (!pluginManager) {
+          console.error(`Main process: PluginManager not initialized`);
+          return { success: false, message: "Plugin system not available" };
+        }
+
+        // Gọi uninstallPlugin với timeout để tránh hang
         console.log(`Main process: Calling pluginManager.uninstallPlugin for ${pluginName}`);
-        await pluginManager.uninstallPlugin(pluginName);
+
+        const uninstallPromise = pluginManager.uninstallPlugin(pluginName);
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Uninstall timeout after 60 seconds')), 60000);
+        });
+
+        await Promise.race([uninstallPromise, timeoutPromise]);
         console.log(`Main process: Plugin ${pluginName} uninstalled successfully`);
+
       } catch (error) {
         console.error(`Main process: Error in uninstallPlugin for ${pluginName}:`, error);
 
-        // Send error event to renderer
+        // Send error event to renderer với error handling cải thiện
         try {
           if (event.sender && !event.sender.isDestroyed()) {
             event.sender.send('plugin-uninstall-error', {
@@ -865,7 +890,8 @@ app.whenReady().then(async () => {
           console.error(`Main process: Error sending uninstall error event:`, sendError);
         }
 
-        // Still continue to update plugin list
+        // Trả về lỗi nhưng vẫn tiếp tục cập nhật plugin list
+        // return { success: false, message: error instanceof Error ? error.message : String(error) };
       }
 
       // Gửi danh sách plugin mới cho renderer với error handling

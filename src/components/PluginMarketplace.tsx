@@ -5,6 +5,8 @@ import { Input } from './ui/input';
 import { PluginInfo } from '../plugin/PluginInterface';
 import ExtensionCard from './ExtensionCard';
 import ExtensionDetail from './ExtensionDetail';
+import ErrorBoundary from './ErrorBoundary';
+import LoadingSpinner from './LoadingSpinner';
 
 interface PluginMarketplaceProps {
   onClose: () => void;
@@ -280,16 +282,23 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
       return;
     }
 
-    try {
-      setInstalling(pluginName);
-      setError(null);
-      setSuccess(null);
+    // Đặt trạng thái loading ngay lập tức để tránh double-click
+    setInstalling(pluginName);
+    setError(null);
+    setSuccess(null);
 
+    try {
       // Chuẩn hóa tên plugin (loại bỏ phiên bản nếu có)
       const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
       console.log(`PluginMarketplace: Installing plugin: ${pluginName} (normalized: ${normalizedName})`);
 
-      const result = await window.electron.ipcRenderer.installPlugin(pluginName);
+      // Thêm timeout để tránh hang indefinitely
+      const installPromise = window.electron.ipcRenderer.installPlugin(pluginName);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Installation timeout after 60 seconds')), 60000);
+      });
+
+      const result = await Promise.race([installPromise, timeoutPromise]);
       console.log(`PluginMarketplace: Install API call completed for ${pluginName}`, result);
 
       // Kiểm tra kết quả trả về
@@ -362,7 +371,7 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
       return;
     }
 
-    // Đặt trạng thái
+    // Đặt trạng thái loading ngay lập tức để tránh double-click
     setInstalling(pluginName);
     setError(null);
     setSuccess(null);
@@ -374,9 +383,15 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
     }
 
     try {
-      // Gọi API uninstall với error handling cải thiện
+      // Gọi API uninstall với timeout để tránh hang
       console.log(`PluginMarketplace: Calling uninstallPlugin API for ${pluginName}`);
-      const result = await window.electron.ipcRenderer.uninstallPlugin(pluginName);
+
+      const uninstallPromise = window.electron.ipcRenderer.uninstallPlugin(pluginName);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Uninstall timeout after 30 seconds')), 30000);
+      });
+
+      const result = await Promise.race([uninstallPromise, timeoutPromise]);
 
       // Check if result indicates success
       if (result && typeof result === 'object' && result.success === false) {
@@ -466,18 +481,47 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
     .filter(plugin => plugin && typeof plugin === 'object' && plugin.installed !== true);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-[#1e1e1e] text-white rounded-lg shadow-lg w-[1000px] h-[80vh] flex flex-col">
-        <div className="flex justify-between items-center p-4 border-b border-gray-700">
-          <h2 className="text-xl font-semibold">EXTENSIONS</h2>
-          <Button
-            variant="ghost"
-            className="text-gray-400 hover:text-white"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+    <ErrorBoundary
+      fallback={
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-[#1e1e1e] text-white rounded-lg shadow-lg w-[600px] p-8">
+            <div className="text-center">
+              <h2 className="text-xl font-bold mb-4 text-red-400">Plugin Marketplace Error</h2>
+              <p className="text-gray-300 mb-4">
+                An error occurred while loading the plugin marketplace. This might be due to a network issue or plugin data corruption.
+              </p>
+              <div className="flex gap-4 justify-center">
+                <Button
+                  onClick={() => window.location.reload()}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Reload Application
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={onClose}
+                  className="text-gray-400 hover:text-white"
+                >
+                  Close Marketplace
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
+      }
+    >
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-[#1e1e1e] text-white rounded-lg shadow-lg w-[1000px] h-[80vh] flex flex-col">
+          <div className="flex justify-between items-center p-4 border-b border-gray-700">
+            <h2 className="text-xl font-semibold">EXTENSIONS</h2>
+            <Button
+              variant="ghost"
+              className="text-gray-400 hover:text-white"
+              onClick={onClose}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
 
         <div className="flex flex-1 overflow-hidden">
           {/* Left panel - Extension list */}
@@ -499,8 +543,12 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
             {/* Extensions list */}
             <div className="flex-1 overflow-y-auto">
               {loading ? (
-                <div className="flex justify-center items-center h-40">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                <div className="h-40">
+                  <LoadingSpinner
+                    size="lg"
+                    message="Loading plugins..."
+                    className="h-full"
+                  />
                 </div>
               ) : filteredPlugins.length === 0 ? (
                 <div className="text-center text-gray-400 py-8">
@@ -528,20 +576,56 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
                         INSTALLED
                       </div>
                       {installedPlugins.map((plugin) => {
+                        // Kiểm tra plugin có hợp lệ không trước khi render
+                        if (!plugin || !plugin.name) {
+                          console.error('Invalid plugin object in installed plugins:', plugin);
+                          return null;
+                        }
+
                         console.log(`Rendering installed plugin card: ${plugin.name}`);
-                        return (
-                          <ExtensionCard
-                            key={plugin.name}
-                            plugin={plugin}
-                            onClick={() => {
-                              console.log(`Installed plugin clicked: ${plugin.name}`);
-                              setSelectedPlugin(plugin);
-                            }}
-                            onUninstall={() => handleUninstall(plugin.name)}
-                            installing={installing === plugin.name}
-                          />
-                        );
-                      })}
+
+                        try {
+                          return (
+                            <ErrorBoundary
+                              key={`installed-${plugin.name}`}
+                              fallback={
+                                <div className="p-3 mx-2 my-1 bg-red-900 bg-opacity-30 border border-red-800 text-red-200 rounded text-sm">
+                                  Error loading plugin: {plugin.name}
+                                </div>
+                              }
+                            >
+                              <ExtensionCard
+                                plugin={plugin}
+                                onClick={() => {
+                                  try {
+                                    console.log(`Installed plugin clicked: ${plugin.name}`);
+                                    setSelectedPlugin(plugin);
+                                  } catch (error) {
+                                    console.error('Error selecting plugin:', error);
+                                    setError(`Error selecting plugin: ${plugin.name}`);
+                                  }
+                                }}
+                                onUninstall={() => {
+                                  try {
+                                    handleUninstall(plugin.name);
+                                  } catch (error) {
+                                    console.error('Error uninstalling plugin:', error);
+                                    setError(`Error uninstalling plugin: ${plugin.name}`);
+                                  }
+                                }}
+                                installing={installing === plugin.name}
+                              />
+                            </ErrorBoundary>
+                          );
+                        } catch (error) {
+                          console.error(`Error rendering plugin card for ${plugin.name}:`, error);
+                          return (
+                            <div key={`error-${plugin.name}`} className="p-3 mx-2 my-1 bg-red-900 bg-opacity-30 border border-red-800 text-red-200 rounded text-sm">
+                              Error rendering plugin: {plugin.name}
+                            </div>
+                          );
+                        }
+                      }).filter(Boolean)}
                     </div>
                   )}
 
@@ -552,20 +636,56 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
                         RECOMMENDED
                       </div>
                       {notInstalledPlugins.map((plugin) => {
+                        // Kiểm tra plugin có hợp lệ không trước khi render
+                        if (!plugin || !plugin.name) {
+                          console.error('Invalid plugin object in not installed plugins:', plugin);
+                          return null;
+                        }
+
                         console.log(`Rendering not installed plugin card: ${plugin.name}`);
-                        return (
-                          <ExtensionCard
-                            key={plugin.name}
-                            plugin={plugin}
-                            onClick={() => {
-                              console.log(`Not installed plugin clicked: ${plugin.name}`);
-                              setSelectedPlugin(plugin);
-                            }}
-                            onInstall={() => handleInstall(plugin.name)}
-                            installing={installing === plugin.name}
-                          />
-                        );
-                      })}
+
+                        try {
+                          return (
+                            <ErrorBoundary
+                              key={`not-installed-${plugin.name}`}
+                              fallback={
+                                <div className="p-3 mx-2 my-1 bg-red-900 bg-opacity-30 border border-red-800 text-red-200 rounded text-sm">
+                                  Error loading plugin: {plugin.name}
+                                </div>
+                              }
+                            >
+                              <ExtensionCard
+                                plugin={plugin}
+                                onClick={() => {
+                                  try {
+                                    console.log(`Not installed plugin clicked: ${plugin.name}`);
+                                    setSelectedPlugin(plugin);
+                                  } catch (error) {
+                                    console.error('Error selecting plugin:', error);
+                                    setError(`Error selecting plugin: ${plugin.name}`);
+                                  }
+                                }}
+                                onInstall={() => {
+                                  try {
+                                    handleInstall(plugin.name);
+                                  } catch (error) {
+                                    console.error('Error installing plugin:', error);
+                                    setError(`Error installing plugin: ${plugin.name}`);
+                                  }
+                                }}
+                                installing={installing === plugin.name}
+                              />
+                            </ErrorBoundary>
+                          );
+                        } catch (error) {
+                          console.error(`Error rendering plugin card for ${plugin.name}:`, error);
+                          return (
+                            <div key={`error-${plugin.name}`} className="p-3 mx-2 my-1 bg-red-900 bg-opacity-30 border border-red-800 text-red-200 rounded text-sm">
+                              Error rendering plugin: {plugin.name}
+                            </div>
+                          );
+                        }
+                      }).filter(Boolean)}
                     </div>
                   )}
                 </div>
@@ -576,12 +696,50 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
           {/* Right panel - Extension details */}
           <div className="w-2/3 flex flex-col">
             {selectedPlugin ? (
-              <ExtensionDetail
-                plugin={selectedPlugin}
-                onClose={() => setSelectedPlugin(null)}
-                onInstall={() => handleInstall(selectedPlugin.name)}
-                onUninstall={() => handleUninstall(selectedPlugin.name)}
-              />
+              <ErrorBoundary
+                fallback={
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                    <div className="text-center p-8">
+                      <h3 className="text-lg font-semibold mb-2 text-red-400">Error Loading Extension Details</h3>
+                      <p className="mb-4">There was an error loading the details for this extension.</p>
+                      <Button
+                        onClick={() => setSelectedPlugin(null)}
+                        variant="ghost"
+                        className="text-gray-400 hover:text-white"
+                      >
+                        Close Details
+                      </Button>
+                    </div>
+                  </div>
+                }
+              >
+                <ExtensionDetail
+                  plugin={selectedPlugin}
+                  onClose={() => {
+                    try {
+                      setSelectedPlugin(null);
+                    } catch (error) {
+                      console.error('Error closing extension detail:', error);
+                    }
+                  }}
+                  onInstall={() => {
+                    try {
+                      handleInstall(selectedPlugin.name);
+                    } catch (error) {
+                      console.error('Error installing from detail view:', error);
+                      setError(`Error installing plugin: ${selectedPlugin.name}`);
+                    }
+                  }}
+                  onUninstall={() => {
+                    try {
+                      handleUninstall(selectedPlugin.name);
+                    } catch (error) {
+                      console.error('Error uninstalling from detail view:', error);
+                      setError(`Error uninstalling plugin: ${selectedPlugin.name}`);
+                    }
+                  }}
+                />
+              </ErrorBoundary>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-gray-400">
                 <div className="text-center p-8">
@@ -592,8 +750,9 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
             )}
           </div>
         </div>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 

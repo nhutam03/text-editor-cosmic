@@ -3132,7 +3132,7 @@ connectToEditor();
   /**
    * Xử lý thông điệp lưu file từ plugin (cho autosave)
    */
-  private handleSaveFileMessage(socket: Socket, message: any): void {
+  private handleSaveFileMessage(_socket: Socket, message: any): void {
     try {
       console.log('Received save-file message from plugin');
 
