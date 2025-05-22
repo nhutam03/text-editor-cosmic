@@ -38,7 +38,9 @@
       "target": [
         "nsis"
       ],
-      "icon": "resources/icon.ico"
+      "icon": "resources/icon.ico",
+      "signingHashAlgorithms": null,
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
