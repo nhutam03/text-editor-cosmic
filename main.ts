@@ -12,6 +12,7 @@ import path from "path";
 import fs from "fs";
 import { OpenDialogReturnValue } from "electron";
 import { PluginManager } from "./src/plugin/PluginManager";
+import { AIService } from "./src/services/ai-service";
 // Load environment variables from .env file
 // This handles both development and production environments
 function loadEnvVariables() {
@@ -49,7 +50,7 @@ let pluginManager: ExtendedPluginManager;
 const runningProcesses = new Map<string, ChildProcess>();
 const PORT = process.env.VITE_PLUGIN_PORT
   ? parseInt(process.env.VITE_PLUGIN_PORT)
-  : 5000;
+  : 5001; // Thay đổi từ 5000 thành 5001 để khớp với Firebase emulator và PluginManager default
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -77,57 +78,114 @@ function createWindow() {
 }
 
 async function initializePluginManager() {
-  // Khởi tạo Plugin Manager
-  pluginManager = new PluginManager(PORT) as ExtendedPluginManager;
+  try {
+    console.log("Initializing Plugin Manager...");
 
-  // Đặt tham chiếu đến mainWindow
-  if (mainWindow) {
-    pluginManager.setMainWindow(mainWindow);
+    // Khởi tạo Plugin Manager
+    pluginManager = new PluginManager(PORT) as ExtendedPluginManager;
+
+    // Đặt tham chiếu đến mainWindow
+    if (mainWindow) {
+      pluginManager.setMainWindow(mainWindow);
+      console.log("Main window reference set in Plugin Manager");
+    } else {
+      console.warn("Main window not available when initializing Plugin Manager");
+    }
+
+    // Đăng ký AI Assistant menu item tích hợp sẵn
+    try {
+      pluginManager.registerBuiltInMenuItem({
+        id: 'built-in-ai-assistant.aiChat',
+        label: 'AI Chat',
+        parentMenu: 'view',
+        shortcut: 'Alt+A',
+        pluginId: 'built-in-ai-assistant'
+      });
+      console.log("Built-in AI Assistant menu item registered");
+    } catch (menuError) {
+      console.error("Error registering built-in AI Assistant menu item:", menuError);
+    }
+
+    // Đăng ký callback khi danh sách plugin thay đổi
+    pluginManager.setPluginListChangedCallback((plugins) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log("Sending updated plugin list to renderer");
+        mainWindow.webContents.send("plugin-list", plugins);
+      }
+    });
+
+    // Đăng ký callback khi danh sách menu item thay đổi
+    pluginManager.setMenuItemsChangedCallback((menuItems) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log("Sending updated menu items to renderer");
+        mainWindow.webContents.send("menu-items-changed", menuItems);
+      }
+    });
+
+    // Khởi động Plugin Manager với xử lý lỗi
+    try {
+      console.log("Starting Plugin Manager...");
+      // Tự động khởi động AI Assistant plugin nếu đã được cài đặt
+      await pluginManager.start(true);
+      console.log("Plugin Manager started successfully with AI Assistant auto-start enabled");
+    } catch (startError) {
+      console.error("Error starting Plugin Manager:", startError);
+      // Vẫn tiếp tục chạy ứng dụng ngay cả khi không thể khởi động Plugin Manager
+    }
+
+    return pluginManager;
+  } catch (error) {
+    console.error("Error initializing Plugin Manager:", error);
+    // Tạo một Plugin Manager giả để tránh lỗi null reference
+    pluginManager = new PluginManager(PORT) as ExtendedPluginManager;
+    return pluginManager;
   }
-
-  // Đăng ký callback khi danh sách plugin thay đổi
-  pluginManager.setPluginListChangedCallback((plugins) => {
-    if (mainWindow) {
-      mainWindow.webContents.send("plugin-list", plugins);
-    }
-  });
-
-  // Đăng ký callback khi danh sách menu item thay đổi
-  pluginManager.setMenuItemsChangedCallback((menuItems) => {
-    if (mainWindow) {
-      mainWindow.webContents.send("menu-items-changed", menuItems);
-    }
-  });
-
-  // Khởi động Plugin Manager
-  await pluginManager.start();
 }
 
 
 
 app.whenReady().then(async () => {
-  // Tạo cửa sổ chính trước
-  mainWindow = createWindow();
+  try {
+    // Tạo cửa sổ chính trước
+    mainWindow = createWindow();
 
-  // Đợi cửa sổ được tạo hoàn toàn
-  await new Promise<void>((resolve) => {
-    if (
-      mainWindow &&
-      mainWindow.webContents &&
-      mainWindow.webContents.isLoading()
-    ) {
-      mainWindow.webContents.once("did-finish-load", () => resolve());
-    } else {
-      resolve();
+    // Đợi cửa sổ được tạo hoàn toàn
+    await new Promise<void>((resolve) => {
+      if (
+        mainWindow &&
+        mainWindow.webContents &&
+        mainWindow.webContents.isLoading()
+      ) {
+        mainWindow.webContents.once("did-finish-load", () => resolve());
+      } else {
+        resolve();
+      }
+    });
+
+    // Khởi tạo PluginManager sau khi cửa sổ đã sẵn sàng
+    try {
+      await initializePluginManager();
+      console.log("Plugin manager initialized successfully");
+    } catch (pluginError) {
+      console.error("Error initializing plugin manager:", pluginError);
+      // Tiếp tục chạy ứng dụng ngay cả khi có lỗi với plugin manager
     }
-  });
 
-  // Khởi tạo PluginManager sau khi cửa sổ đã sẵn sàng
-  await initializePluginManager();
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  } catch (error) {
+    console.error("Error during app initialization:", error);
+    // Nếu có lỗi nghiêm trọng, hiển thị thông báo và tạo cửa sổ mới
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('initialization-error', {
+        error: error instanceof Error ? error.message : 'Unknown error during startup'
+      });
+    } else {
+      // Nếu cửa sổ chính bị hủy, tạo cửa sổ mới
+      mainWindow = createWindow();
+    }
+  }
 
   // Handler cho load dictionary
   ipcMain.handle("load-dictionary", async () => {
@@ -515,360 +573,101 @@ app.whenReady().then(async () => {
     }
   );
 
-  /**
-   * Cài đặt trực tiếp plugin export-to-pdf
-   */
-  async function installExportToPdfPlugin(
-    event: Electron.IpcMainInvokeEvent
-  ): Promise<void> {
-    console.log("Main process: Installing export-to-pdf plugin directly");
 
-    try {
-      // Tạo thư mục plugin
-      const pluginsDir = path.join(app.getPath("userData"), "plugins");
-      const pluginDir = path.join(pluginsDir, "export-to-pdf");
-      console.log(`Creating plugin directory at ${pluginDir}`);
-
-      // Đảm bảo thư mục plugins tồn tại
-      if (!fs.existsSync(pluginsDir)) {
-        fs.mkdirSync(pluginsDir, { recursive: true });
-      }
-
-      // Xóa thư mục cũ nếu tồn tại
-      if (fs.existsSync(pluginDir)) {
-        console.log(`Removing existing plugin directory: ${pluginDir}`);
-        fs.rmSync(pluginDir, { recursive: true, force: true });
-      }
-
-      // Tạo thư mục mới
-      fs.mkdirSync(pluginDir, { recursive: true });
-
-      // Tạo file package.json
-      const packageJson = {
-        name: "export-to-pdf",
-        version: "1.0.0",
-        description: "Export document to PDF",
-        main: "index.js",
-        author: "nhtam",
-        dependencies: {
-          pdfkit: "^0.13.0",
-        },
-        menuItems: [
-          {
-            id: "export-to-pdf.exportToPdf",
-            label: "Export to PDF",
-            parentMenu: "file",
-            accelerator: "CmdOrCtrl+E",
-          },
-        ],
-      };
-
-      // Ghi file package.json
-      fs.writeFileSync(
-        path.join(pluginDir, "package.json"),
-        JSON.stringify(packageJson, null, 2)
-      );
-
-      // Tạo file index.js
-      const indexJs = `const fs = require('fs');
-const path = require('path');
-const PDFDocument = require('pdfkit');
-const net = require('net');
-
-// Connect to the plugin server
-const client = new net.Socket();
-const PORT = process.argv.find(arg => arg.startsWith('--port='))?.split('=')[1] || 5000;
-
-client.connect(PORT, 'localhost', () => {
-  console.log('Connected to plugin server');
-
-  // Register the plugin
-  client.write(JSON.stringify({
-    type: 'REGISTER',
-    payload: {
-      name: 'export-to-pdf',
-      version: '1.0.0',
-      description: 'Export document to PDF',
-      author: 'nhtam'
-    }
-  }));
-
-  // Register menu items
-  client.write(JSON.stringify({
-    type: 'REGISTER_MENU',
-    payload: {
-      pluginName: 'export-to-pdf',
-      menuItems: [
-        {
-          id: 'export-to-pdf.exportToPdf',
-          label: 'Export to PDF',
-          parentMenu: 'file',
-          accelerator: 'CmdOrCtrl+E'
-        }
-      ]
-    }
-  }));
-});
-
-// Handle data from the server
-client.on('data', (data) => {
-  try {
-    const message = JSON.parse(data.toString());
-    console.log('Received message:', message);
-
-    if (message.type === 'EXECUTE') {
-      const { content, filePath } = message.payload;
-
-      if (!content) {
-        sendResponse(message.id, false, 'No content provided');
-        return;
-      }
-
-      // Generate PDF file path
-      const outputPath = filePath
-        ? filePath.replace(/\.[^.]+$/, '.pdf')
-        : path.join(process.cwd(), 'output.pdf');
-
-      console.log('Generating PDF at:', outputPath);
-
-      // Create PDF document
-      const doc = new PDFDocument();
-      const stream = fs.createWriteStream(outputPath);
-
-      // Pipe PDF to file
-      doc.pipe(stream);
-
-      // Add content to PDF
-      doc.fontSize(12).text(content, {
-        align: 'left'
-      });
-
-      // Finalize PDF
-      doc.end();
-
-      // Wait for PDF to be written
-      stream.on('finish', () => {
-        console.log('PDF created successfully');
-        sendResponse(message.id, true, 'PDF created successfully', { outputPath });
-      });
-
-      stream.on('error', (err) => {
-        console.error('Error creating PDF:', err);
-        sendResponse(message.id, false, 'Error creating PDF: ' + err.message);
-      });
-    }
-  } catch (error) {
-    console.error('Error processing message:', error);
-  }
-});
-
-// Handle connection errors
-client.on('error', (error) => {
-  console.error('Connection error:', error);
-});
-
-// Handle connection close
-client.on('close', () => {
-  console.log('Connection closed');
-});
-
-// Send response back to the server
-function sendResponse(id, success, message, data = null) {
-  client.write(JSON.stringify({
-    id,
-    type: 'RESPONSE',
-    payload: {
-      success,
-      message,
-      data
-    }
-  }));
-}
-`;
-
-      // Ghi file index.js
-      fs.writeFileSync(path.join(pluginDir, "index.js"), indexJs);
-
-      // Cài đặt dependencies
-      try {
-        const { execSync } = require("child_process");
-        console.log(`Running npm install in ${pluginDir}`);
-        execSync("npm install --no-fund --no-audit --loglevel=error", {
-          cwd: pluginDir,
-          stdio: "inherit",
-          timeout: 60000, // 60 giây timeout
-        });
-        console.log("Dependencies installed successfully");
-      } catch (npmError) {
-        console.error("Error installing dependencies:", npmError);
-        console.log(
-          "Continuing without installing dependencies - plugin may not work correctly"
-        );
-      }
-
-      // Cập nhật file extensions.json
-      const extensionsJsonPath = path.join(pluginsDir, "..", "extensions.json");
-      let extensions: { [key: string]: any } = {};
-
-      // Đọc file extensions.json nếu tồn tại
-      if (fs.existsSync(extensionsJsonPath)) {
-        try {
-          const content = fs.readFileSync(extensionsJsonPath, "utf8");
-          extensions = JSON.parse(content);
-        } catch (err) {
-          console.error("Error reading extensions.json:", err);
-          extensions = {};
-        }
-      }
-
-      // Cập nhật trạng thái plugin
-      extensions["export-to-pdf"] = {
-        enabled: true,
-        installedTimestamp: Date.now(),
-      };
-
-      // Ghi file extensions.json
-      fs.writeFileSync(
-        extensionsJsonPath,
-        JSON.stringify(extensions, null, 2),
-        "utf8"
-      );
-      console.log(
-        `Updated extensions.json for plugin export-to-pdf, installed: true`
-      );
-
-      // Khởi động plugin
-      try {
-        await pluginManager.startPlugin("export-to-pdf");
-        console.log("Plugin export-to-pdf started successfully");
-      } catch (startError) {
-        console.error("Error starting plugin export-to-pdf:", startError);
-        // Tiếp tục ngay cả khi có lỗi khởi động
-      }
-
-      // Gửi danh sách plugin mới cho renderer
-      const plugins = pluginManager.getPlugins();
-      event.sender.send(
-        "plugin-list",
-        plugins.map((p) => p.name)
-      );
-
-      // Gửi danh sách menu items mới cho renderer
-      setTimeout(() => {
-        try {
-          // Lấy danh sách menu items cho các menu cha
-          const fileMenuItems = pluginManager.getMenuItemsForParent("file");
-          const editMenuItems = pluginManager.getMenuItemsForParent("edit");
-          const runMenuItems = pluginManager.getMenuItemsForParent("run");
-
-          console.log(
-            `Main process: Sending updated menu items after export-to-pdf installation`
-          );
-          console.log(
-            `File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`
-          );
-
-          // Gửi danh sách menu items mới cho renderer
-          const allMenuItems = [
-            ...fileMenuItems,
-            ...editMenuItems,
-            ...runMenuItems,
-          ];
-          event.sender.send("menu-items-changed", allMenuItems);
-        } catch (menuError) {
-          console.error(`Main process: Error sending menu items:`, menuError);
-        }
-      }, 1000);
-
-      console.log("Export-to-PDF plugin installed successfully");
-    } catch (error) {
-      console.error("Error installing export-to-pdf plugin directly:", error);
-      throw error;
-    }
-  }
 
   // Cài đặt plugin - Đơn giản hóa tối đa
   ipcMain.handle("install-plugin", async (event, pluginName) => {
     console.log(`Main process: Installing plugin ${pluginName}`);
 
-    // Xử lý đặc biệt cho plugin export-to-pdf
-    if (pluginName === "export-to-pdf") {
-      console.log(
-        "Main process: Using special handling for export-to-pdf plugin"
-      );
-      try {
-        // Gọi phương thức cài đặt đặc biệt
-        await installExportToPdfPlugin(event);
-        return {
-          success: true,
-          message: `Plugin export-to-pdf installed successfully`,
-        };
-      } catch (error: any) {
-        console.error(
-          `Main process: Error installing export-to-pdf plugin:`,
-          error
-        );
-        return {
-          success: false,
-          message: `Error installing export-to-pdf plugin: ${
-            error.message || String(error)
-          }`,
-        };
-      }
-    }
-
     try {
       // Gọi installPlugin và bắt lỗi
-      await pluginManager.installPlugin(pluginName);
+      const result = await pluginManager.installPlugin(pluginName);
       console.log(`Main process: Plugin ${pluginName} installed successfully`);
+
+      // Gửi danh sách plugin mới cho renderer với error handling cải tiến
+      try {
+        const plugins = pluginManager.getPlugins();
+
+        // Kiểm tra xem event.sender vẫn còn hợp lệ không
+        if (event.sender && !event.sender.isDestroyed()) {
+          event.sender.send(
+            "plugin-list",
+            plugins.map((p) => p.name)
+          );
+        } else {
+          console.warn(`Main process: Event sender is destroyed, cannot send plugin list`);
+        }
+
+        // Gửi danh sách menu items mới cho renderer với error handling
+        setTimeout(() => {
+          try {
+            // Kiểm tra lại event.sender trước khi gửi
+            if (event.sender && !event.sender.isDestroyed()) {
+              // Lấy danh sách menu items cho các menu cha với error handling
+              let fileMenuItems: any[] = [];
+              let editMenuItems: any[] = [];
+              let runMenuItems: any[] = [];
+
+              try {
+                fileMenuItems = pluginManager.getMenuItemsForParent("file");
+                editMenuItems = pluginManager.getMenuItemsForParent("edit");
+                runMenuItems = pluginManager.getMenuItemsForParent("run");
+              } catch (menuGetError) {
+                console.error(`Main process: Error getting menu items:`, menuGetError);
+                // Sử dụng arrays rỗng nếu có lỗi
+              }
+
+              console.log(
+                `Main process: Sending updated menu items after plugin installation`
+              );
+              console.log(
+                `File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`
+              );
+
+              // Gửi danh sách menu items mới cho renderer
+              const allMenuItems = [
+                ...fileMenuItems,
+                ...editMenuItems,
+                ...runMenuItems,
+              ];
+              event.sender.send("menu-items-changed", allMenuItems);
+            } else {
+              console.warn(`Main process: Event sender is destroyed, cannot send menu items`);
+            }
+          } catch (menuError) {
+            console.error(`Main process: Error sending menu items:`, menuError);
+          }
+        }, 1000); // Đợi 1 giây để plugin có thời gian đăng ký menu items
+      } catch (listError) {
+        console.error(`Main process: Error sending plugin list:`, listError);
+      }
+
+      // Trả về kết quả cài đặt
+      return {
+        success: true,
+        message: `Plugin ${pluginName} installed successfully`,
+        ...result
+      };
     } catch (error) {
       console.error(`Main process: Error installing plugin:`, error);
-      // Không ném lỗi, chỉ ghi log
+
+      // Gửi thông báo lỗi cho renderer
+      event.sender.send('plugin-install-error', {
+        pluginName,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+
+      // Luôn trả về đối tượng hợp lệ để tránh màn hình trắng
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        name: pluginName,
+        version: "1.0.0",
+        description: `Plugin ${pluginName}`,
+        author: "Unknown",
+        installed: false
+      };
     }
-
-    // Gửi danh sách plugin mới cho renderer
-    try {
-      const plugins = pluginManager.getPlugins();
-      event.sender.send(
-        "plugin-list",
-        plugins.map((p) => p.name)
-      );
-
-      // Gửi danh sách menu items mới cho renderer
-      setTimeout(() => {
-        try {
-          // Lấy danh sách menu items cho các menu cha
-          const fileMenuItems = pluginManager.getMenuItemsForParent("file");
-          const editMenuItems = pluginManager.getMenuItemsForParent("edit");
-          const runMenuItems = pluginManager.getMenuItemsForParent("run");
-
-          console.log(
-            `Main process: Sending updated menu items after plugin installation`
-          );
-          console.log(
-            `File menu items: ${fileMenuItems.length}, Edit menu items: ${editMenuItems.length}, Run menu items: ${runMenuItems.length}`
-          );
-
-          // Gửi danh sách menu items mới cho renderer
-          const allMenuItems = [
-            ...fileMenuItems,
-            ...editMenuItems,
-            ...runMenuItems,
-          ];
-          event.sender.send("menu-items-changed", allMenuItems);
-        } catch (menuError) {
-          console.error(`Main process: Error sending menu items:`, menuError);
-        }
-      }, 1000); // Đợi 1 giây để plugin có thời gian đăng ký menu items
-    } catch (error) {
-      console.error(`Main process: Error sending plugin list:`, error);
-    }
-
-    // Luôn trả về success: true để tránh màn hình trắng
-    return {
-      success: true,
-      message: `Plugin ${pluginName} installed successfully`,
-    };
   });
 
   // Gỡ cài đặt plugin - Đơn giản hóa tối đa
@@ -988,6 +787,57 @@ function sendResponse(id, success, message, data = null) {
     }
   );
 
+  // Khởi động AI Assistant plugin theo yêu cầu
+  ipcMain.handle("start-ai-assistant", async (event) => {
+    console.log("Main process: Manual start AI Assistant requested");
+
+    try {
+      await pluginManager.startAIAssistant();
+      console.log("Main process: AI Assistant started successfully");
+      return { success: true, message: "AI Assistant started successfully" };
+    } catch (error: unknown) {
+      console.error("Main process: Error starting AI Assistant:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  // Kiểm tra trạng thái AI Assistant
+  ipcMain.handle("check-ai-assistant-status", async (event) => {
+    console.log("Main process: Checking AI Assistant status");
+
+    try {
+      const status = pluginManager.getAIAssistantStatus();
+      console.log("Main process: AI Assistant status:", status);
+      return { success: true, status };
+    } catch (error: unknown) {
+      console.error("Main process: Error checking AI Assistant status:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        status: { installed: false, running: false, registered: false, port: 5001 }
+      };
+    }
+  });
+
+  // Kiểm tra xem AI Assistant có đang chạy không
+  ipcMain.handle("is-ai-assistant-running", async (event) => {
+    try {
+      const isRunning = pluginManager.isAIAssistantRunning();
+      console.log("Main process: AI Assistant running status:", isRunning);
+      return { success: true, isRunning };
+    } catch (error: unknown) {
+      console.error("Main process: Error checking if AI Assistant is running:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        isRunning: false
+      };
+    }
+  });
+
   // Export to PDF - Chức năng tích hợp trực tiếp vào ứng dụng
   ipcMain.on(
     "export-to-pdf",
@@ -998,7 +848,7 @@ function sendResponse(id, success, message, data = null) {
         );
 
         // Hiển thị SaveDialog để chọn nơi lưu file
-        const result = await dialog.showSaveDialog(mainWindow!, {
+        const result = dialog.showSaveDialog(mainWindow!, {
           title: "Export to PDF",
           defaultPath: filePath
             ? filePath.replace(/\.[^.]+$/, ".pdf")
@@ -1155,7 +1005,7 @@ function sendResponse(id, success, message, data = null) {
 
         // Xử lý các plugin khác
         // Hiển thị SaveDialog để chọn nơi lưu file nếu cần
-        const result = await dialog.showSaveDialog(mainWindow!, {
+        const result = dialog.showSaveDialog(mainWindow!, {
           title: "Save Output",
           defaultPath: "output.pdf",
           filters: [{ name: "PDF Files", extensions: ["pdf"] }],
@@ -1241,6 +1091,76 @@ function sendResponse(id, success, message, data = null) {
     }
   });
 
+  // Thực thi plugin trực tiếp (cho AI Chat) - Với xử lý AI Assistant tích hợp
+  ipcMain.on(
+    "execute-plugin",
+    async (event, data: { pluginName: string; content: string; options?: any }) => {
+      console.log(`🚀 [Main] Executing plugin directly: ${data.pluginName}`);
+      console.log(`📝 [Main] Content length: ${data.content?.length || 0}`);
+      console.log(`⚙️ [Main] Options:`, JSON.stringify(data.options, null, 2));
+
+      try {
+        // Kiểm tra xem có phải AI Assistant plugin không
+        if (data.pluginName === 'ai-assistant' || data.pluginName.includes('ai-assistant')) {
+          console.log(`🤖 [Main] Using built-in AI Assistant service`);
+
+          // Sử dụng AI Service tích hợp thay vì plugin
+          const aiService = AIService.getInstance();
+
+          const aiRequest = {
+            prompt: data.content,
+            systemPrompt: data.options?.systemPrompt || 'Bạn là một trợ lý AI hữu ích về lập trình. Hãy trả lời bằng tiếng Việt.',
+            maxTokens: data.options?.maxTokens || 1000,
+            temperature: data.options?.temperature || 0.7
+          };
+
+          const aiResponse = await aiService.sendMessage(aiRequest);
+
+          if (aiResponse.success) {
+            console.log(`✅ [Main] AI Assistant execution successful`);
+            console.log(`📤 [Main] Sending plugin-executed event with data:`, aiResponse.content);
+            event.reply("plugin-executed", {
+              success: true,
+              message: `AI Assistant executed successfully`,
+              data: aiResponse.content,
+            });
+          } else {
+            console.error(`❌ [Main] AI Assistant execution failed:`, aiResponse.error);
+            event.reply("plugin-executed", {
+              success: false,
+              message: aiResponse.error || 'AI Assistant execution failed',
+            });
+          }
+          return;
+        }
+
+        // Xử lý các plugin khác như bình thường
+        const result = await pluginManager.executePlugin(
+          data.pluginName,
+          data.content,
+          undefined, // filePath
+          data.options
+        );
+
+        console.log(`✅ [Main] Plugin execution successful`);
+        console.log(`📤 [Main] Result:`, result);
+
+        // Trả kết quả về renderer
+        event.reply("plugin-executed", {
+          success: true,
+          message: `Plugin ${data.pluginName} executed successfully`,
+          data: result,
+        });
+      } catch (executeError: any) {
+        console.error(`❌ [Main] Error executing plugin ${data.pluginName}:`, executeError);
+        event.reply("plugin-executed", {
+          success: false,
+          message: `Error executing plugin: ${executeError.message || String(executeError)}`,
+        });
+      }
+    }
+  );
+
   // Thực thi hành động menu
   ipcMain.on(
     "execute-menu-action",
@@ -1313,62 +1233,7 @@ function sendResponse(id, success, message, data = null) {
         if (!menuItem) {
           console.error(`Menu item with ID ${menuItemId} not found`);
 
-          // Xử lý trường hợp đặc biệt cho export-to-pdf
-          if (menuItemId === "export-to-pdf.exportToPdf") {
-            console.log("Special handling for export-to-pdf plugin");
-            try {
-              // Hiển thị SaveDialog để chọn nơi lưu file
-              const result = await dialog.showSaveDialog(mainWindow!, {
-                title: "Export to PDF",
-                defaultPath: "output.pdf",
-                filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-              }) as unknown as SaveDialogReturnValue;
 
-              if (!result.canceled && result.filePath) {
-                // Thử cài đặt và thực thi plugin export-to-pdf
-                try {
-                  await installExportToPdfPlugin(event);
-                  await pluginManager.startPlugin("export-to-pdf");
-                  const pdfResult = await pluginManager.executePlugin(
-                    "export-to-pdf",
-                    content,
-                    result.filePath
-                  );
-                  event.reply("menu-action-result", {
-                    success: true,
-                    message: `File exported successfully to ${result.filePath}`,
-                    data: pdfResult,
-                  });
-                } catch (pluginError) {
-                  console.error(
-                    "Error using plugin, falling back to simple export:",
-                    pluginError
-                  );
-                  // Nếu plugin không hoạt động, sử dụng cách đơn giản hơn
-                  fs.writeFileSync(result.filePath, content);
-                  event.reply("menu-action-result", {
-                    success: true,
-                    message: `File exported successfully to ${result.filePath} (basic export)`,
-                  });
-                }
-              } else {
-                event.reply("menu-action-result", {
-                  success: false,
-                  message: "Export cancelled by user",
-                });
-              }
-              return;
-            } catch (exportError: any) {
-              console.error("Error handling export-to-pdf:", exportError);
-              event.reply("menu-action-result", {
-                success: false,
-                message: `Error exporting to PDF: ${
-                  exportError.message || String(exportError)
-                }`,
-              });
-              return;
-            }
-          }
 
           event.reply("menu-action-result", {
             success: false,
@@ -1386,6 +1251,19 @@ function sendResponse(id, success, message, data = null) {
           event.reply("menu-action-result", {
             success: false,
             message: `Menu item does not have a plugin ID`,
+          });
+          return;
+        }
+
+        // Kiểm tra xem có phải AI Assistant tích hợp không
+        if (pluginId === 'built-in-ai-assistant') {
+          console.log(`🤖 [Main] Executing built-in AI Assistant menu action`);
+
+          // Mở AI Chat dialog
+          event.reply("menu-action-result", {
+            success: true,
+            message: `AI Chat opened successfully`,
+            data: { action: 'open-ai-chat' },
           });
           return;
         }

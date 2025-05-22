@@ -168,20 +168,62 @@ export async function getPluginDownloadUrl(pluginRef: StorageReference): Promise
   }
 
   try {
+    // Check if pluginRef is valid
+    if (!pluginRef || typeof pluginRef.name !== 'string') {
+      console.error('Invalid plugin reference:', pluginRef);
+      throw new Error('Invalid plugin reference');
+    }
+
     // Extract plugin name from reference to handle it safely
     const pluginName = pluginRef.name.replace('.zip', '');
     console.log(`Getting download URL for plugin reference: ${pluginName}`);
+    console.log(`Plugin reference full path: ${pluginRef.fullPath}`);
 
     // Create a new reference to ensure it's properly initialized
     const safeRef = ref(storage, `/plugins/${pluginName}.zip`);
+    console.log(`Created safe reference with path: ${safeRef.fullPath}`);
 
     // Get the download URL using the safe reference
-    return await getDownloadURL(safeRef);
-  } catch (error) {
+    const url = await getDownloadURL(safeRef);
+    console.log(`Successfully got download URL for ${pluginName}: ${url}`);
+    return url;
+  } catch (error: any) {
     console.error('Error getting plugin download URL:', error);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+
+    if (error.customData) {
+      console.error('Server response:', error.customData.serverResponse);
+    }
 
     // Extract plugin name from reference for fallback
-    const pluginName = pluginRef.name.replace('.zip', '');
+    const pluginName = pluginRef?.name?.replace('.zip', '') || 'unknown';
+
+    // Không sử dụng URL hardcode nữa, thay vào đó sẽ tạo URL dựa trên tên plugin và bucket
+    console.log(`Không sử dụng URL hardcode, sẽ tạo URL dựa trên tên plugin và bucket`);
+
+    // Tạo URL dựa trên tên plugin và bucket
+    const bucket = firebaseConfig.storageBucket;
+    const pluginFileName = `${pluginName}.zip`;
+    const encodedPluginName = encodeURIComponent(`plugins/${pluginFileName}`);
+    const dynamicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPluginName}?alt=media`;
+
+    console.log(`Tạo URL động cho plugin ${pluginName}: ${dynamicUrl}`);
+
+    // Kiểm tra URL bằng cách gửi request HEAD
+    try {
+      const response = await fetch(dynamicUrl, { method: 'HEAD' });
+      if (response.ok) {
+        console.log(`URL hợp lệ và có thể truy cập: ${dynamicUrl}`);
+        return dynamicUrl;
+      } else {
+        console.log(`URL trả về status ${response.status}: ${dynamicUrl}`);
+        // Tiếp tục với getPluginDownloadUrlByName
+      }
+    } catch (error) {
+      console.log(`Lỗi kiểm tra URL: ${error}`);
+      // Tiếp tục với getPluginDownloadUrlByName
+    }
 
     // Fall back to getPluginDownloadUrlByName which has better error handling
     console.log(`Falling back to getPluginDownloadUrlByName for ${pluginName}`);
@@ -206,71 +248,94 @@ export async function getPluginDownloadUrlByName(pluginName: string): Promise<st
     const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
     console.log(`Normalized plugin name: ${normalizedName}`);
 
-    // Try different possible plugin names
-    const possibleNames = [
-      pluginName,                // Original name
-      normalizedName,            // Normalized name
-      `${normalizedName}-1.0.0`, // With version
-      'export-to-pdf',           // Specific for export-to-pdf plugin
-      'export-to-pdf-1.0.0',     // Specific version for export-to-pdf
-      'pdf-export',              // Alternative name for export-to-pdf
-      'prettier-plugin',         // Specific for prettier plugin
-      'prettier-plugin-1.0.0',   // Specific version for prettier
-      'prettier',                // Alternative name for prettier
-      'ai-assistant',            // Specific for AI assistant plugin
-      'ai-assistant-1.0.0',      // Specific version for AI assistant
-      'code-runner',             // Specific for code runner plugin
-      'code-runner.zip',         // Exact filename for code runner
-      'AutoSave_Plugin',         // AutoSave plugin
-      'AutoSave_Plugin.zip'      // Exact filename for AutoSave plugin
+    // Tạo tham chiếu đến plugin trong Firebase Storage
+    const pluginRef = ref(storage, `/plugins/${normalizedName}.zip`);
+    console.log(`Plugin reference path: ${pluginRef.fullPath}`);
+
+    try {
+      // Lấy URL tải xuống từ Firebase Storage
+      const downloadUrl = await getDownloadURL(pluginRef);
+      console.log(`Found download URL for ${normalizedName}: ${downloadUrl}`);
+      return downloadUrl;
+    } catch (error) {
+      console.log(`Error getting download URL for ${normalizedName}: ${error}`);
+
+      // Thử với tên đầy đủ nếu tên chuẩn hóa không hoạt động
+      const fullNameRef = ref(storage, `/plugins/${pluginName}.zip`);
+      console.log(`Trying with full name: ${fullNameRef.fullPath}`);
+
+      try {
+        const fullNameUrl = await getDownloadURL(fullNameRef);
+        console.log(`Found download URL for ${pluginName}: ${fullNameUrl}`);
+        return fullNameUrl;
+      } catch (fullNameError) {
+        console.log(`Error getting download URL for ${pluginName}: ${fullNameError}`);
+
+        // Thử với tên có phiên bản
+        const versionedRef = ref(storage, `/plugins/${normalizedName}-1.0.0.zip`);
+        console.log(`Trying with versioned name: ${versionedRef.fullPath}`);
+
+        try {
+          const versionedUrl = await getDownloadURL(versionedRef);
+          console.log(`Found download URL for ${normalizedName}-1.0.0: ${versionedUrl}`);
+          return versionedUrl;
+        } catch (versionedError) {
+          console.log(`Error getting download URL for ${normalizedName}-1.0.0: ${versionedError}`);
+          // Tiếp tục với các phương pháp khác
+        }
+      }
+    }
+
+    // Tạo tham chiếu đến plugin trong Firebase Storage
+    console.log(`Creating reference to plugin in Firebase Storage: ${pluginName}`);
+
+    // Tạo danh sách các tên file có thể có
+    const possibleFileNames = [
+      `${pluginName}.zip`,
+      `${normalizedName}.zip`,
+      `${normalizedName}-1.0.0.zip`,
+      `${pluginName}-1.0.0.zip`
     ];
 
-    // Thử trực tiếp với URL từ Firebase Storage cho các plugin đặc biệt
-    if (normalizedName === 'export-to-pdf') {
+    // Thử từng tên file
+    for (const fileName of possibleFileNames) {
       try {
-        // URL từ Firebase Storage trong hình ảnh của bạn
-        const directUrl = 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fexport-to-pdf-1.0.0.zip?alt=media';
-        console.log(`Trying direct URL for export-to-pdf: ${directUrl}`);
-        return directUrl;
-      } catch (directError) {
-        console.log('Direct URL failed, continuing with other methods');
+        console.log(`Trying to get plugin with filename: ${fileName}`);
+        const pluginRef = ref(storage, `/plugins/${fileName}`);
+        console.log(`Plugin reference path: ${pluginRef.fullPath}`);
+
+        // Lấy URL tải xuống từ Firebase Storage
+        const downloadUrl = await getDownloadURL(pluginRef);
+        console.log(`Found download URL for ${fileName}: ${downloadUrl}`);
+        return downloadUrl;
+      } catch (error) {
+        console.log(`Error getting download URL for ${fileName}: ${error}`);
+        // Tiếp tục với tên file tiếp theo
       }
     }
 
-    // Special handling for ai-assistant plugin
-    if (normalizedName === 'ai-assistant') {
-      try {
-        // Sử dụng URL trực tiếp từ Firebase Console
-        const directUrl = 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fai-assistant-1.0.0.zip?alt=media';
-        console.log(`Trying direct URL for ai-assistant: ${directUrl}`);
-        return directUrl;
-      } catch (directError) {
-        console.log('Direct URL failed for ai-assistant, continuing with other methods');
-      }
-    }
-
-    // Special handling for code-runner plugin
-    if (normalizedName === 'code-runner') {
-      try {
-        // Sử dụng URL trực tiếp từ Firebase Console
-        const directUrl = 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fcode-runner.zip?alt=media';
-        console.log(`Trying direct URL for code-runner: ${directUrl}`);
-        return directUrl;
-      } catch (directError) {
-        console.log('Direct URL failed for code-runner, continuing with other methods');
-      }
-    }
+    // Thử với các tên plugin khác nhau
+    const possibleNames = [
+      pluginName,                // Tên gốc
+      normalizedName,            // Tên chuẩn hóa
+      `${normalizedName}-1.0.0`  // Với phiên bản
+    ];
 
     // Try each possible name
     for (const name of possibleNames) {
       try {
         console.log(`Trying to get download URL for: ${name}`);
         const pluginRef = ref(storage, `/plugins/${name}.zip`);
+        console.log(`Created reference with path: ${pluginRef.fullPath}`);
+
         const downloadUrl = await getDownloadURL(pluginRef);
         console.log(`Found download URL for ${name}: ${downloadUrl}`);
         return downloadUrl;
-      } catch (nameError) {
+      } catch (nameError: any) {
         console.log(`No plugin found with name: ${name}`);
+        if (nameError.code) {
+          console.log(`Error code: ${nameError.code}`);
+        }
         // Continue to the next name
       }
     }
@@ -291,10 +356,39 @@ export async function getPluginDownloadUrlByName(pluginName: string): Promise<st
       }
     }
 
-    // Nếu vẫn không tìm thấy, thử URL cứng cho export-to-pdf
-    if (normalizedName === 'export-to-pdf') {
-      console.log('Falling back to hardcoded URL for export-to-pdf');
-      return 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fexport-to-pdf-1.0.0.zip?alt=media';
+    // Tạo URL động dựa trên tên plugin và bucket
+    console.log(`Tạo URL động dựa trên tên plugin và bucket`);
+
+    // Danh sách các tên file có thể có
+    const dynamicFileNames = [
+      `${normalizedName}.zip`,
+      `${normalizedName}-1.0.0.zip`,
+      `${pluginName}.zip`,
+      `${pluginName}-1.0.0.zip`
+    ];
+
+    // Thử từng tên file
+    for (const fileName of dynamicFileNames) {
+      try {
+        const bucket = firebaseConfig.storageBucket;
+        const encodedPluginName = encodeURIComponent(`plugins/${fileName}`);
+        const dynamicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPluginName}?alt=media`;
+
+        console.log(`Thử URL động: ${dynamicUrl}`);
+
+        // Kiểm tra URL bằng cách gửi request HEAD
+        const response = await fetch(dynamicUrl, { method: 'HEAD' });
+        if (response.ok) {
+          console.log(`URL hợp lệ và có thể truy cập: ${dynamicUrl}`);
+          return dynamicUrl;
+        } else {
+          console.log(`URL trả về status ${response.status}: ${dynamicUrl}`);
+          // Tiếp tục với tên file tiếp theo
+        }
+      } catch (error) {
+        console.log(`Lỗi kiểm tra URL: ${error}`);
+        // Tiếp tục với tên file tiếp theo
+      }
     }
 
     // If we still can't find it, fall back to mock implementation
@@ -312,22 +406,24 @@ export async function getPluginDownloadUrlByName(pluginName: string): Promise<st
     console.error('Storage bucket used:', firebaseConfig.storageBucket);
     console.error('Current working directory:', process.cwd());
 
-    // Nếu là export-to-pdf, trả về URL cứng ngay cả khi có lỗi
-    if (pluginName === 'export-to-pdf' || pluginName.includes('export-to-pdf')) {
-      console.log('Error occurred but returning hardcoded URL for export-to-pdf');
-      return 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fexport-to-pdf-1.0.0.zip?alt=media';
-    }
+    // Thử tạo URL trực tiếp dựa trên tên plugin và bucket
+    try {
+      const bucket = firebaseConfig.storageBucket;
+      const encodedPluginName = encodeURIComponent(`plugins/${pluginName}.zip`);
+      const directUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPluginName}?alt=media`;
 
-    // Special handling for ai-assistant plugin
-    if (pluginName === 'ai-assistant' || pluginName.includes('ai-assistant')) {
-      console.log('Error occurred but returning hardcoded URL for ai-assistant');
-      return 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fai-assistant-1.0.0.zip?alt=media';
-    }
+      console.log(`Trying direct URL construction: ${directUrl}`);
 
-    // Special handling for code-runner plugin
-    if (pluginName === 'code-runner' || pluginName.includes('code-runner')) {
-      console.log('Error occurred but returning hardcoded URL for code-runner');
-      return 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fcode-runner.zip?alt=media';
+      // Kiểm tra xem URL có tồn tại không
+      const response = await fetch(directUrl, { method: 'HEAD' });
+      if (response.ok) {
+        console.log(`Direct URL exists and is accessible: ${directUrl}`);
+        return directUrl;
+      } else {
+        console.log(`Direct URL returned status ${response.status}: ${directUrl}`);
+      }
+    } catch (error) {
+      console.log(`Error checking direct URL: ${error}`);
     }
 
     // Fall back to mock implementation

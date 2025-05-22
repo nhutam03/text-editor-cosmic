@@ -870,6 +870,13 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.removeAllListeners("plugin-list");
     window.electron.ipcRenderer.removeAllListeners("menu-items-changed");
     window.electron.ipcRenderer.removeAllListeners("menu-action-result");
+    window.electron.ipcRenderer.removeAllListeners("plugin-connection-error");
+    window.electron.ipcRenderer.removeAllListeners("plugin-error");
+    window.electron.ipcRenderer.removeAllListeners("initialization-error");
+    window.electron.ipcRenderer.removeAllListeners("plugin-install-start");
+    window.electron.ipcRenderer.removeAllListeners("plugin-install-progress");
+    window.electron.ipcRenderer.removeAllListeners("plugin-install-success");
+    window.electron.ipcRenderer.removeAllListeners("plugin-install-error");
 
     // Listen for plugin list updates
     window.electron.ipcRenderer.on("plugin-list", handlePluginListUpdate);
@@ -880,6 +887,72 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.on(
       "menu-action-result",
       handleMenuActionResult
+    );
+
+    // Lắng nghe sự kiện lỗi kết nối plugin
+    window.electron.ipcRenderer.on(
+      "plugin-connection-error",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; error: string }) => {
+        console.log("Received plugin connection error:", data);
+        // Hiển thị thông báo lỗi cho người dùng
+        const { pluginName, error } = data;
+        alert(`Lỗi kết nối plugin ${pluginName}: ${error}`);
+      }
+    );
+
+    // Lắng nghe sự kiện lỗi plugin
+    window.electron.ipcRenderer.on(
+      "plugin-error",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; error: string }) => {
+        console.log("Received plugin error:", data);
+        // Hiển thị thông báo lỗi cho người dùng
+        const { pluginName, error } = data;
+        alert(`Lỗi plugin ${pluginName}: ${error}`);
+      }
+    );
+
+    // Lắng nghe sự kiện lỗi khởi tạo
+    window.electron.ipcRenderer.on(
+      "initialization-error",
+      (_event: Electron.IpcRendererEvent, data: { error: string }) => {
+        console.log("Received initialization error:", data);
+        // Hiển thị thông báo lỗi cho người dùng
+        const { error } = data;
+        alert(`Lỗi khởi tạo ứng dụng: ${error}`);
+      }
+    );
+
+    // Listen for plugin installation events
+    window.electron.ipcRenderer.on(
+      "plugin-install-start",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; message: string }) => {
+        console.log(`Plugin installation started: ${data.pluginName}`);
+        // You can show a loading indicator here
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "plugin-install-progress",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; message: string; progress: number }) => {
+        console.log(`Plugin installation progress: ${data.pluginName} - ${data.progress}% - ${data.message}`);
+        // You can update a progress bar here
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "plugin-install-success",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; message: string; progress?: number }) => {
+        console.log(`Plugin installation success: ${data.pluginName} - ${data.message}`);
+        // You can show a success message here
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "plugin-install-error",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; error: string }) => {
+        console.error(`Plugin installation error: ${data.pluginName} - ${data.error}`);
+        // You can show an error message here
+      }
     );
 
     // Load plugin menu items for File, Edit and Run menus
@@ -894,6 +967,13 @@ const App: React.FC = () => {
       window.electron.ipcRenderer.removeAllListeners("plugin-list");
       window.electron.ipcRenderer.removeAllListeners("menu-items-changed");
       window.electron.ipcRenderer.removeAllListeners("menu-action-result");
+      window.electron.ipcRenderer.removeAllListeners("plugin-connection-error");
+      window.electron.ipcRenderer.removeAllListeners("plugin-error");
+      window.electron.ipcRenderer.removeAllListeners("initialization-error");
+      window.electron.ipcRenderer.removeAllListeners("plugin-install-start");
+      window.electron.ipcRenderer.removeAllListeners("plugin-install-progress");
+      window.electron.ipcRenderer.removeAllListeners("plugin-install-success");
+      window.electron.ipcRenderer.removeAllListeners("plugin-install-error");
     };
   }, [activeFile, currentContent, installedPlugins]); // Add dependencies to ensure handler has access to latest state
 
@@ -960,13 +1040,20 @@ const App: React.FC = () => {
     result: {
       success: boolean;
       message: string;
-      data?: { formattedText?: string; [key: string]: any };
+      data?: { formattedText?: string; action?: string; [key: string]: any };
     }
   ) => {
     console.log("Menu action result:", result);
     if (result.success) {
       // Handle successful menu action
       console.log("Menu action executed successfully:", result.message);
+
+      // Check if this is an AI Chat action
+      if (result.data && result.data.action === 'open-ai-chat') {
+        console.log("Opening AI Chat from menu action");
+        setShowAIChat(true);
+        return;
+      }
 
       // Check if the result contains formatted text (from Prettier plugin)
       if (result.data && result.data.formattedText !== undefined) {

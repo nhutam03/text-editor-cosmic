@@ -27,11 +27,6 @@ export async function getAvailablePlugins(): Promise<{ name: string, ref: Storag
   // Return mock plugins
   return [
     {
-      name: 'export-to-pdf',
-      ref: new MockStorageReference('/plugins/export-to-pdf.zip'),
-      installed: false
-    },
-    {
       name: 'prettier-plugin',
       ref: new MockStorageReference('/plugins/prettier-plugin.zip'),
       installed: false
@@ -40,24 +35,96 @@ export async function getAvailablePlugins(): Promise<{ name: string, ref: Storag
       name: 'code-runner',
       ref: new MockStorageReference('/plugins/code-runner.zip'),
       installed: false
+    },
+    {
+      name: 'ai-assistant',
+      ref: new MockStorageReference('/plugins/ai-assistant.zip'),
+      installed: false
+    },
+    {
+      name: 'AutoSave_Plugin',
+      ref: new MockStorageReference('/plugins/AutoSave_Plugin.zip'),
+      installed: false
     }
   ];
 }
 
 export async function getPluginDownloadUrl(pluginRef: StorageReference): Promise<string> {
   console.log('Using mock getPluginDownloadUrl');
-  return 'mock://download-url';
+
+  // Extract plugin name from reference
+  const pluginName = pluginRef.name.replace('.zip', '');
+  console.log(`Mock: Getting download URL for plugin reference: ${pluginName}`);
+
+  // Normalize plugin name (remove version suffix if present)
+  const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+  // Tạo URL động dựa trên tên plugin
+  console.log(`Mock: Tạo URL động dựa trên tên plugin: ${normalizedName}`);
+
+  // Sử dụng bucket mặc định cho môi trường mock
+  const mockBucket = 'cosmic-text-editor.appspot.com';
+
+  // Tạo URL dựa trên tên plugin
+  let fileName = '';
+
+  // Xác định tên file dựa trên loại plugin
+  if (normalizedName === 'ai-assistant' || normalizedName.includes('ai-assistant')) {
+    fileName = 'ai-assistant-1.0.0.zip';
+  } else if (normalizedName === 'prettier-plugin' || normalizedName.includes('prettier')) {
+    fileName = 'prettier-plugin-1.0.0.zip';
+  } else if (normalizedName === 'code-runner' || normalizedName.includes('code-runner')) {
+    fileName = 'code-runner.zip';
+  } else if (normalizedName === 'AutoSave_Plugin' || normalizedName.includes('AutoSave')) {
+    fileName = 'AutoSave_Plugin.zip';
+  } else {
+    // Sử dụng tên plugin với phiên bản mặc định
+    fileName = `${normalizedName}-1.0.0.zip`;
+  }
+
+  // Tạo URL
+  const encodedPluginName = encodeURIComponent(`plugins/${fileName}`);
+  const url = `https://firebasestorage.googleapis.com/v0/b/${mockBucket}/o/${encodedPluginName}?alt=media`;
+
+  console.log(`Mock: Using URL for ${normalizedName}: ${url}`);
+  return url;
 }
 
 export async function getPluginDownloadUrlByName(pluginName: string): Promise<string> {
   console.log(`Using mock getPluginDownloadUrlByName for ${pluginName}`);
 
-  // For export-to-pdf, return a hardcoded URL
-  if (pluginName === 'export-to-pdf' || pluginName.includes('export-to-pdf')) {
-    return 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fexport-to-pdf-1.0.0.zip?alt=media';
+  // Normalize plugin name (remove version suffix if present)
+  const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
+
+  // Tạo URL động dựa trên tên plugin
+  console.log(`Mock: Tạo URL động dựa trên tên plugin: ${normalizedName}`);
+
+  // Sử dụng bucket mặc định cho môi trường mock
+  const mockBucket = 'cosmic-text-editor.appspot.com';
+
+  // Tạo URL dựa trên tên plugin
+  let fileName = '';
+
+  // Xác định tên file dựa trên loại plugin
+  if (normalizedName === 'ai-assistant' || normalizedName.includes('ai-assistant')) {
+    fileName = 'ai-assistant-1.0.0.zip';
+  } else if (normalizedName === 'prettier-plugin' || normalizedName.includes('prettier')) {
+    fileName = 'prettier-plugin-1.0.0.zip';
+  } else if (normalizedName === 'code-runner' || normalizedName.includes('code-runner')) {
+    fileName = 'code-runner.zip';
+  } else if (normalizedName === 'AutoSave_Plugin' || normalizedName.includes('AutoSave')) {
+    fileName = 'AutoSave_Plugin.zip';
+  } else {
+    // Sử dụng tên plugin với phiên bản mặc định
+    fileName = `${normalizedName}-1.0.0.zip`;
   }
 
-  return 'mock://download-url';
+  // Tạo URL
+  const encodedPluginName = encodeURIComponent(`plugins/${fileName}`);
+  const url = `https://firebasestorage.googleapis.com/v0/b/${mockBucket}/o/${encodedPluginName}?alt=media`;
+
+  console.log(`Mock: Using URL for ${normalizedName}: ${url}`);
+  return url;
 }
 
 // CommonJS exports for compatibility with require() in firebase.ts

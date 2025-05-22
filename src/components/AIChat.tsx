@@ -33,6 +33,8 @@ const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
   const handleSendMessage = async () => {
     if (!input.trim()) return;
 
+    console.log('🚀 [AIChat] Sending message to AI:', input);
+
     // Thêm tin nhắn của người dùng vào danh sách
     const userMessage = { role: 'user' as const, content: input };
     setMessages(prev => [...prev, userMessage]);
@@ -40,29 +42,53 @@ const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
     setIsLoading(true);
 
     try {
-      // Gửi yêu cầu đến plugin AI
-      window.electron.ipcRenderer.send('execute-plugin', {
+      const requestData = {
         pluginName: 'ai-assistant',
         content: input,
         options: {
           systemPrompt: 'Bạn là một trợ lý AI hữu ích về lập trình. Hãy trả lời bằng tiếng Việt.',
           prompt: input
         }
-      });
+      };
 
-      // Đăng ký listener để nhận kết quả
-      window.electron.ipcRenderer.once('plugin-executed', (_event: Electron.IpcRendererEvent, result: { success: boolean, data?: { result: string }, message?: string }) => {
+      console.log('📤 [AIChat] Sending execute-plugin request:', requestData);
+
+      // Đăng ký listener để nhận kết quả TRƯỚC khi gửi request
+      console.log('📝 [AIChat] Registering plugin-executed listener...');
+      window.electron.ipcRenderer.once('plugin-executed', (_event: Electron.IpcRendererEvent, result: { success: boolean, data?: string | { result: string }, message?: string }) => {
+        console.log('📥 [AIChat] Received plugin-executed response:', result);
+        console.log('📥 [AIChat] Response data type:', typeof result.data);
+        console.log('📥 [AIChat] Response data content:', result.data);
+
         if (result.success) {
+          // Xử lý response từ AI service tích hợp hoặc plugin
+          let aiResponse = '';
+          if (typeof result.data === 'string') {
+            // Response từ AI service tích hợp
+            aiResponse = result.data;
+          } else if (result.data && typeof result.data === 'object' && 'result' in result.data) {
+            // Response từ plugin
+            aiResponse = result.data.result;
+          } else {
+            aiResponse = 'Không có kết quả';
+          }
+
+          console.log('✅ [AIChat] AI processing successful, response:', aiResponse);
           // Thêm phản hồi từ AI vào danh sách tin nhắn
-          setMessages(prev => [...prev, { role: 'assistant', content: result.data?.result || 'Không có kết quả' }]);
+          setMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
         } else {
+          console.error('❌ [AIChat] AI processing failed:', result.message);
           // Hiển thị thông báo lỗi
           setMessages(prev => [...prev, { role: 'assistant', content: `Lỗi: ${result.message}` }]);
         }
         setIsLoading(false);
       });
+
+      // Gửi yêu cầu đến plugin AI SAU khi đã đăng ký listener
+      console.log('📤 [AIChat] Sending execute-plugin request to main process...');
+      window.electron.ipcRenderer.send('execute-plugin', requestData);
     } catch (error) {
-      console.error('Error sending message to AI:', error);
+      console.error('💥 [AIChat] Error sending message to AI:', error);
       setMessages(prev => [...prev, { role: 'assistant', content: 'Đã xảy ra lỗi khi xử lý yêu cầu của bạn.' }]);
       setIsLoading(false);
     }
