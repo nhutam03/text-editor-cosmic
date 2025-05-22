@@ -972,19 +972,25 @@ app.whenReady().then(async () => {
     }
   );
 
-  // Áp dụng plugin (giữ lại cho các plugin khác)
+  // Áp dụng plugin (giữ lại cho các plugin khác, không bao gồm export-to-pdf)
   ipcMain.on(
     "apply-plugin",
     async (event, pluginName: string, content: string) => {
       try {
         console.log(`Applying plugin: ${pluginName}`);
 
+        // Export to PDF không còn là plugin nữa, nó được xử lý bởi handler riêng
+        if (pluginName === "export-to-pdf") {
+          event.reply("plugin-applied", "Export to PDF is now a built-in feature. Please use the File menu.");
+          return;
+        }
+
         // Xử lý các plugin khác
         // Hiển thị SaveDialog để chọn nơi lưu file nếu cần
         const result = dialog.showSaveDialog(mainWindow!, {
           title: "Save Output",
-          defaultPath: "output.pdf",
-          filters: [{ name: "PDF Files", extensions: ["pdf"] }],
+          defaultPath: "output.txt",
+          filters: [{ name: "All Files", extensions: ["*"] }],
         }) as unknown as SaveDialogReturnValue;
 
         if (!result.canceled && result.filePath) {
@@ -1208,72 +1214,6 @@ app.whenReady().then(async () => {
 
         if (!menuItem) {
           console.error(`Menu item with ID ${menuItemId} not found`);
-
-
-
-          event.reply("menu-action-result", {
-            success: false,
-            message: `Menu item with ID ${menuItemId} not found`,
-          });
-          return;
-        }
-          // Xử lý trường hợp đặc biệt cho export-to-pdf
-          if (menuItemId === "export-to-pdf.exportToPdf") {
-            console.log("Special handling for export-to-pdf plugin");
-            try {
-              // Hiển thị SaveDialog để chọn nơi lưu file
-              const result = (await dialog.showSaveDialog(mainWindow!, {
-                title: "Export to PDF",
-                defaultPath: "output.pdf",
-                filters: [{ name: "PDF Files", extensions: ["pdf"] }],
-              })) as unknown as SaveDialogReturnValue;
-
-              if (!result.canceled && result.filePath) {
-                // Thử cài đặt và thực thi plugin export-to-pdf
-                try {
-                  await installExportToPdfPlugin(event);
-                  await pluginManager.startPlugin("export-to-pdf");
-                  const pdfResult = await pluginManager.executePlugin(
-                    "export-to-pdf",
-                    content,
-                    result.filePath
-                  );
-                  event.reply("menu-action-result", {
-                    success: true,
-                    message: `File exported successfully to ${result.filePath}`,
-                    data: pdfResult,
-                  });
-                } catch (pluginError) {
-                  console.error(
-                    "Error using plugin, falling back to simple export:",
-                    pluginError
-                  );
-                  // Nếu plugin không hoạt động, sử dụng cách đơn giản hơn
-                  fs.writeFileSync(result.filePath, content);
-                  event.reply("menu-action-result", {
-                    success: true,
-                    message: `File exported successfully to ${result.filePath} (basic export)`,
-                  });
-                }
-              } else {
-                event.reply("menu-action-result", {
-                  success: false,
-                  message: "Export cancelled by user",
-                });
-              }
-              return;
-            } catch (exportError: any) {
-              console.error("Error handling export-to-pdf:", exportError);
-              event.reply("menu-action-result", {
-                success: false,
-                message: `Error exporting to PDF: ${
-                  exportError.message || String(exportError)
-                }`,
-              });
-              return;
-            }
-          }
-
           event.reply("menu-action-result", {
             success: false,
             message: `Menu item with ID ${menuItemId} not found`,
