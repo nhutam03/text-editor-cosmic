@@ -7,7 +7,19 @@ import AIChat from './components/AIChat';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
 import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText, Play, Square, Folder } from 'lucide-react';
 import { MenuItem } from './plugin/MenuContribution';
-import path from 'path';
+// Removed path import - using custom path utilities instead
+
+// Custom path utilities for browser compatibility
+const pathUtils = {
+  dirname: (filePath: string): string => {
+    // Get directory name from file path
+    const lastSlashIndex = Math.max(
+      filePath.lastIndexOf('/'),
+      filePath.lastIndexOf('\\')
+    );
+    return lastSlashIndex > 0 ? filePath.substring(0, lastSlashIndex) : '';
+  }
+};
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState("explorer");
@@ -384,7 +396,7 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.send("execute-terminal-command", {
       command,
       workingDirectory:
-        selectedFolder || (activeFile ? path.dirname(activeFile) : undefined),
+        selectedFolder || (activeFile ? pathUtils.dirname(activeFile) : undefined),
     });
   };
 
@@ -1181,18 +1193,7 @@ const App: React.FC = () => {
     console.log("File tabs updated, current openFiles:", openFiles);
   }, [openFiles]);
 
-  const handleGlobalSearch = (query: string) => {
-    if (!query.trim() || !selectedFolder) return;
 
-    console.log("Searching for:", query);
-    window.electron.ipcRenderer.send("search-in-files", {
-      query,
-      folder: selectedFolder,
-    });
-
-    // Switch to search tab
-    setActiveTab("search");
-  };
 
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-white">

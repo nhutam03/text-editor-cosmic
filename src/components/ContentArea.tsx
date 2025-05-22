@@ -30,7 +30,23 @@ import {
   ContextMenuTrigger,
   ContextMenuSeparator,
 } from "./ui/context-menu";
-import * as path from "path";
+// Removed path import - using custom path utilities instead
+
+// Custom path utilities for browser compatibility
+const pathUtils = {
+  isAbsolute: (filePath: string): boolean => {
+    // Check for Windows absolute paths (C:\, D:\, etc.) or Unix absolute paths (/)
+    return /^[a-zA-Z]:\\/.test(filePath) || filePath.startsWith('/');
+  },
+  join: (...paths: string[]): string => {
+    // Simple path joining that works in browser
+    return paths
+      .filter(Boolean)
+      .join('/')
+      .replace(/\/+/g, '/') // Replace multiple slashes with single slash
+      .replace(/\\/g, '/'); // Convert backslashes to forward slashes
+  }
+};
 
 interface FolderStructureItem {
   name: string;
@@ -1758,10 +1774,10 @@ const ContentArea: React.FC<ContentAreaProps> = ({
     );
 
     // Đảm bảo đường dẫn đầy đủ
-    const fullPath = path.isAbsolute(filePath)
+    const fullPath = pathUtils.isAbsolute(filePath)
       ? filePath
       : selectedFolder
-      ? path.join(selectedFolder, filePath)
+      ? pathUtils.join(selectedFolder, filePath)
       : filePath;
 
     console.log("Đường dẫn đầy đủ:", fullPath);
