@@ -654,12 +654,14 @@ const App: React.FC = () => {
 
   // Không cần hàm focus lại vào editor nữa vì chúng ta muốn giữ focus ở terminal
 
-  // Lắng nghe kết quả chạy code
+  // Lắng nghe kết quả chạy code và terminal
   useEffect(() => {
     // Hủy đăng ký các listener cũ trước khi đăng ký mới
     window.electron.ipcRenderer.removeAllListeners("run-code-output");
     window.electron.ipcRenderer.removeAllListeners("run-code-result");
     window.electron.ipcRenderer.removeAllListeners("stop-execution-result");
+    window.electron.ipcRenderer.removeAllListeners("terminal-output");
+    window.electron.ipcRenderer.removeAllListeners("terminal-result");
 
     const handleRunCodeOutput = (
       _event: any,
@@ -709,6 +711,30 @@ const App: React.FC = () => {
       }, 50);
     };
 
+    // Xử lý output từ terminal command
+    const handleTerminalOutput = (
+      _event: any,
+      data: { type: string; text: string }
+    ) => {
+      console.log(`Terminal output (${data.type}):`, data.text);
+      setTerminalOutput((prev) => prev + data.text);
+    };
+
+    // Xử lý kết quả terminal command
+    const handleTerminalResult = (_event: any, result: any) => {
+      console.log("Terminal result:", result);
+      setIsRunning(false);
+
+      // Thêm thông báo kết thúc
+      setTerminalOutput(
+        (prev) =>
+          prev +
+          `\n--- ${result.success ? "COMPLETED" : "FAILED"} ---\n${
+            result.message
+          }\n`
+      );
+    };
+
     // Đăng ký các listener
     window.electron.ipcRenderer.on("run-code-output", handleRunCodeOutput);
     window.electron.ipcRenderer.on("run-code-result", handleRunCodeResult);
@@ -716,12 +742,16 @@ const App: React.FC = () => {
       "stop-execution-result",
       handleStopExecutionResult
     );
+    window.electron.ipcRenderer.on("terminal-output", handleTerminalOutput);
+    window.electron.ipcRenderer.on("terminal-result", handleTerminalResult);
 
     return () => {
       // Hủy đăng ký các listener
       window.electron.ipcRenderer.removeAllListeners("run-code-output");
       window.electron.ipcRenderer.removeAllListeners("run-code-result");
       window.electron.ipcRenderer.removeAllListeners("stop-execution-result");
+      window.electron.ipcRenderer.removeAllListeners("terminal-output");
+      window.electron.ipcRenderer.removeAllListeners("terminal-result");
     };
   }, []);
 

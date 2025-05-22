@@ -62,9 +62,31 @@ const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus vào input khi component được mount
+  // Focus vào input khi component được mount và giữ focus
   useEffect(() => {
-    inputRef.current?.focus();
+    const focusInput = () => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    };
+
+    // Focus ngay khi mount
+    focusInput();
+
+    // Thêm event listener để giữ focus khi cần
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Nếu click vào trong AI chat container, focus vào input
+      if (target.closest('.ai-chat-container')) {
+        setTimeout(focusInput, 0);
+      }
+    };
+
+    document.addEventListener('click', handleClick);
+
+    return () => {
+      document.removeEventListener('click', handleClick);
+    };
   }, []);
 
   const handleSendMessage = async () => {
@@ -140,7 +162,7 @@ const AIChat: React.FC<AIChatProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 w-96 h-[500px] bg-[#252526] border border-gray-700 rounded-lg shadow-lg flex flex-col z-50">
+    <div className="ai-chat-container fixed bottom-4 right-4 w-96 h-[500px] bg-[#252526] border border-gray-700 rounded-lg shadow-lg flex flex-col z-50">
       {/* Header */}
       <div className="flex justify-between items-center p-3 border-b border-gray-700">
         <h3 className="text-white font-medium">AI Assistant</h3>

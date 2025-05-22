@@ -52,23 +52,7 @@ const Terminal: React.FC<TerminalProps> = ({
     // Để người dùng tự do điều khiển focus theo ý muốn
   }, [activeTab]);
 
-  // Xử lý click vào terminal
-  const handleTerminalClick = () => {
-    // Không làm gì cả, để người dùng tự do điều khiển focus
-    // Điều này cho phép người dùng chọn text mà không bị can thiệp
-  };
 
-  // Xử lý khi terminal nhận focus
-  const handleTerminalFocus = () => {
-    console.log('Terminal received focus');
-  };
-
-  // Xử lý khi terminal mất focus
-  const handleTerminalBlur = () => {
-    console.log('Terminal lost focus to:', document.activeElement);
-    // Không cố gắng focus lại vào terminal khi người dùng cố tình click ra ngoài
-    // Điều này cho phép người dùng tự do tương tác với các phần tử khác
-  };
 
   // Xử lý khi người dùng nhấn phím trong terminal
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -149,6 +133,31 @@ const Terminal: React.FC<TerminalProps> = ({
       setCursorPosition(cursorPosition + 1);
     }
   };
+
+  // Xử lý click vào terminal để focus
+  const handleTerminalClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Ngăn event bubbling
+    if (terminalRef.current) {
+      terminalRef.current.focus();
+      setCursorPosition(command.length);
+    }
+  };
+
+  // Xử lý focus vào terminal
+  const handleTerminalFocus = () => {
+    console.log("Terminal focused");
+    setCursorPosition(command.length);
+  };
+
+  // Xử lý blur khỏi terminal
+  const handleTerminalBlur = (e: React.FocusEvent) => {
+    // Chỉ blur nếu focus không chuyển sang element con của terminal
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (!terminalRef.current?.contains(relatedTarget)) {
+      console.log("Terminal blurred");
+    }
+  };
+
   return (
     <div className="bg-[#1e1e1e] border-t border-[#3c3c3c] flex flex-col h-full overflow-hidden">
       <div className="flex bg-[#252526] text-sm">

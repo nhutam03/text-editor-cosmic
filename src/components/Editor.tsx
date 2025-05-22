@@ -444,25 +444,40 @@ const Editor: React.FC<EditorProps> = ({
     }
   };
 
-  // Thêm useEffect để lắng nghe sự kiện keydown và keyup để đảm bảo không có sự kiện nào đang bị chặn
+  // Thêm useEffect để lắng nghe sự kiện keydown - chỉ focus editor khi cần thiết
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Kiểm tra xem người dùng có đang nhập trong input tìm kiếm của explorer không
-      const searchInput = document.querySelector(
-        '.explorer input[type="text"]'
-      );
-      const isSearchInputActive = document.activeElement === searchInput;
+      // Không tự động focus nếu người dùng đang tương tác với input/textarea/terminal
+      const activeElement = document.activeElement;
+      const tagName = activeElement?.tagName.toLowerCase();
 
-      // Chỉ focus vào editor nếu không đang nhập trong input tìm kiếm
-      const editorElement = document.querySelector(".monaco-editor");
-      if (
-        editorElement &&
-        document.activeElement !== editorElement &&
-        !isSearchInputActive &&
-        !document.activeElement?.tagName.toLowerCase().includes("input")
-      ) {
-        console.log("Editor does not have focus, focusing it...");
-        focusEditor();
+      // Danh sách các element không nên bị gián đoạn focus
+      const focusableElements = ['input', 'textarea', 'select'];
+      const isInFocusableElement = focusableElements.includes(tagName || '');
+
+      // Kiểm tra xem có đang trong terminal không
+      const isInTerminal = activeElement?.closest('.terminal-container') !== null;
+
+      // Kiểm tra xem có đang trong AI chat không
+      const isInAIChat = activeElement?.closest('[class*="ai-chat"]') !== null;
+
+      // Kiểm tra xem có đang trong search input không
+      const isInSearchInput = activeElement?.closest('.explorer') !== null && tagName === 'input';
+
+      // Chỉ focus vào editor nếu:
+      // 1. Không đang trong input/textarea/select
+      // 2. Không đang trong terminal
+      // 3. Không đang trong AI chat
+      // 4. Không đang trong search input
+      // 5. Phím được nhấn không phải là phím điều hướng hoặc phím đặc biệt
+      const isNavigationKey = ['Tab', 'Escape', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'].includes(e.key);
+
+      if (!isInFocusableElement && !isInTerminal && !isInAIChat && !isInSearchInput && !isNavigationKey) {
+        const editorElement = document.querySelector(".monaco-editor");
+        if (editorElement && document.activeElement !== editorElement) {
+          console.log("Focusing editor for typing...");
+          focusEditor();
+        }
       }
     };
 
