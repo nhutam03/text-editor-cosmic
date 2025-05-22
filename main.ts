@@ -142,71 +142,71 @@ async function initializePluginManager() {
   }
 }
 
-// Hàm đăng ký tất cả IPC handlers
-function registerAllIpcHandlers() {
-  // Đăng ký các handlers quan trọng trước
+// // Hàm đăng ký tất cả IPC handlers
+// function registerAllIpcHandlers() {
+//   // Đăng ký các handlers quan trọng trước
 
-  // Lấy danh sách plugin đã cài đặt - Đảm bảo không có plugin trùng lặp
-  ipcMain.handle("get-plugins", async () => {
-    try {
-      if (!pluginManager) {
-        console.warn("PluginManager not initialized yet, returning empty array");
-        return [];
-      }
+//   // Lấy danh sách plugin đã cài đặt - Đảm bảo không có plugin trùng lặp
+//   ipcMain.handle("get-plugins", async () => {
+//     try {
+//       if (!pluginManager) {
+//         console.warn("PluginManager not initialized yet, returning empty array");
+//         return [];
+//       }
 
-      // Lấy danh sách plugin
-      const plugins = pluginManager.getPlugins();
+//       // Lấy danh sách plugin
+//       const plugins = pluginManager.getPlugins();
 
-      // Tạo Map để lọc các plugin trùng lặp dựa trên tên chuẩn hóa
-      const uniquePlugins = new Map<string, string>();
+//       // Tạo Map để lọc các plugin trùng lặp dựa trên tên chuẩn hóa
+//       const uniquePlugins = new Map<string, string>();
 
-      // Lọc các plugin trùng lặp
-      for (const plugin of plugins) {
-        if (!plugin || !plugin.name) continue;
+//       // Lọc các plugin trùng lặp
+//       for (const plugin of plugins) {
+//         if (!plugin || !plugin.name) continue;
 
-        // Chuẩn hóa tên plugin
-        const normalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, "");
+//         // Chuẩn hóa tên plugin
+//         const normalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, "");
 
-        // Chỉ giữ lại plugin mới nhất cho mỗi tên chuẩn hóa
-        if (!uniquePlugins.has(normalizedName)) {
-          uniquePlugins.set(normalizedName, plugin.name);
-        }
-      }
+//         // Chỉ giữ lại plugin mới nhất cho mỗi tên chuẩn hóa
+//         if (!uniquePlugins.has(normalizedName)) {
+//           uniquePlugins.set(normalizedName, plugin.name);
+//         }
+//       }
 
-      // Trả về danh sách tên plugin duy nhất
-      return Array.from(uniquePlugins.values());
-    } catch (error) {
-      console.error("Error in get-plugins handler:", error);
-      return [];
-    }
-  });
+//       // Trả về danh sách tên plugin duy nhất
+//       return Array.from(uniquePlugins.values());
+//     } catch (error) {
+//       console.error("Error in get-plugins handler:", error);
+//       return [];
+//     }
+//   });
 
-  // Lấy danh sách menu item cho menu cha cụ thể
-  ipcMain.handle("get-menu-items", async (_event, parentMenu: string) => {
-    try {
-      if (!pluginManager) {
-        console.warn("PluginManager not initialized yet, returning empty array");
-        return [];
-      }
+//   // Lấy danh sách menu item cho menu cha cụ thể
+//   ipcMain.handle("get-menu-items", async (_event, parentMenu: string) => {
+//     try {
+//       if (!pluginManager) {
+//         console.warn("PluginManager not initialized yet, returning empty array");
+//         return [];
+//       }
 
-      const menuItems = pluginManager.getMenuItemsForParent(parentMenu);
-      console.log(
-        `Menu items for ${parentMenu}:`,
-        menuItems.map((item) => ({
-          id: item.id,
-          label: item.label,
-          pluginId: item.pluginId,
-        }))
-      );
-      return menuItems;
-    } catch (error) {
-      console.error(`Error getting menu items for ${parentMenu}:`, error);
-      return [];
-    }
-  });
+//       const menuItems = pluginManager.getMenuItemsForParent(parentMenu);
+//       console.log(
+//         `Menu items for ${parentMenu}:`,
+//         menuItems.map((item) => ({
+//           id: item.id,
+//           label: item.label,
+//           pluginId: item.pluginId,
+//         }))
+//       );
+//       return menuItems;
+//     } catch (error) {
+//       console.error(`Error getting menu items for ${parentMenu}:`, error);
+//       return [];
+//     }
+//   });
 
-  // Handler đã được định nghĩa ở trên
-}
+//   // Handler đã được định nghĩa ở trên
+// }
 
 app.whenReady().then(async () => {
   try {
@@ -214,7 +214,7 @@ app.whenReady().then(async () => {
     mainWindow = createWindow();
 
     // Đăng ký tất cả IPC handlers TRƯỚC khi khởi tạo PluginManager
-    registerAllIpcHandlers();
+    //registerAllIpcHandlers();
 
     // Đợi cửa sổ được tạo hoàn toàn
     await new Promise<void>((resolve) => {
@@ -532,6 +532,31 @@ app.whenReady().then(async () => {
       }
     }
   );
+
+  // Lấy danh sách plugin đã cài đặt - Đảm bảo không có plugin trùng lặp
+  ipcMain.handle("get-plugins", async () => {
+    // Lấy danh sách plugin
+    const plugins = pluginManager.getPlugins();
+
+    // Tạo Map để lọc các plugin trùng lặp dựa trên tên chuẩn hóa
+    const uniquePlugins = new Map<string, string>();
+
+    // Lọc các plugin trùng lặp
+    for (const plugin of plugins) {
+      if (!plugin || !plugin.name) continue;
+
+      // Chuẩn hóa tên plugin
+      const normalizedName = plugin.name.replace(/(-\d+\.\d+\.\d+)$/, "");
+
+      // Chỉ giữ lại plugin mới nhất cho mỗi tên chuẩn hóa
+      if (!uniquePlugins.has(normalizedName)) {
+        uniquePlugins.set(normalizedName, plugin.name);
+      }
+    }
+
+    // Trả về danh sách tên plugin duy nhất
+    return Array.from(uniquePlugins.values());
+  });
 
   // Handle renaming a file or folder
   ipcMain.on(
