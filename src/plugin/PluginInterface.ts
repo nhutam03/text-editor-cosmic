@@ -36,6 +36,7 @@ export interface PluginInfo {
 export interface PluginMessage {
   type: string;        // Loại thông điệp
   payload?: any;       // Dữ liệu thông điệp
+  id?: string;         // ID của thông điệp (để theo dõi phản hồi)
 }
 
 export interface PluginResponse {

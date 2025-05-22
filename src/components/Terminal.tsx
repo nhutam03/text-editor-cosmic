@@ -33,11 +33,11 @@ const Terminal: React.FC<TerminalProps> = ({
     }
   }, [terminalOutput]);
 
-  // Tạo một interval để liên tục kiểm tra và đảm bảo terminal luôn có focus khi đang hiển thị
+  // Chỉ focus terminal khi tab được chọn lần đầu, sau đó để người dùng tự do điều khiển
   useEffect(() => {
     if (activeTab !== 'TERMINAL') return;
 
-    // Đảm bảo focus ngay khi component được mount hoặc tab được chọn
+    // Chỉ focus vào terminal khi tab được chọn lần đầu
     if (terminalRef.current) {
       // Sử dụng setTimeout để đảm bảo focus được thực hiện sau khi render
       setTimeout(() => {
@@ -48,82 +48,11 @@ const Terminal: React.FC<TerminalProps> = ({
       }, 50);
     }
 
-    // Tạo một interval để liên tục kiểm tra focus
-    const focusInterval = setInterval(() => {
-      // Kiểm tra xem terminal có đang hiển thị không
-      if (activeTab === 'TERMINAL' && terminalRef.current && document.activeElement !== terminalRef.current) {
-        console.log('Terminal lost focus, refocusing...');
-        terminalRef.current.focus();
-      }
-    }, 50); // Kiểm tra mỗi 50ms để phản ứng nhanh hơn
-
-    // Thêm event listener cho toàn bộ document để bắt sự kiện click
-    const handleDocumentClick = (e: MouseEvent) => {
-      // Nếu click vào terminal hoặc con của terminal, không làm gì
-      if (terminalRef.current && terminalRef.current.contains(e.target as Node)) {
-        return;
-      }
-
-      // Nếu click ra ngoài terminal, kiểm tra xem có phải là editor không
-      const isEditorClick = (e.target as HTMLElement).closest('.monaco-editor');
-      if (isEditorClick && activeTab === 'TERMINAL') {
-        // Nếu click vào editor khi terminal đang active, ngăn chặn và focus lại vào terminal
-        e.preventDefault();
-        e.stopPropagation();
-        if (terminalRef.current) {
-          terminalRef.current.focus();
-        }
-      }
-    };
-
-    // Đăng ký event listener
-    document.addEventListener('mousedown', handleDocumentClick, true);
-
-    // Cleanup interval và event listener khi component unmount hoặc tab thay đổi
-    return () => {
-      clearInterval(focusInterval);
-      document.removeEventListener('mousedown', handleDocumentClick, true);
-    };
+    // Không thêm bất kỳ event listener nào để can thiệp vào việc focus
+    // Để người dùng tự do điều khiển focus theo ý muốn
   }, [activeTab]);
 
-  // Xử lý click vào terminal để focus
-  const handleTerminalClick = (e: React.MouseEvent) => {
-    e.preventDefault(); // Ngăn chặn các hành vi mặc định
-    e.stopPropagation(); // Ngăn chặn sự kiện lan truyền lên các phần tử cha
 
-    if (terminalRef.current) {
-      terminalRef.current.focus();
-    }
-  };
-
-  // Xử lý khi terminal nhận focus
-  const handleTerminalFocus = () => {
-    console.log('Terminal received focus');
-  };
-
-  // Xử lý khi terminal mất focus
-  const handleTerminalBlur = (e: React.FocusEvent) => {
-    console.log('Terminal lost focus to:', document.activeElement);
-
-    // Kiểm tra xem element nào đang nhận focus
-    const activeElement = document.activeElement;
-
-    // Nếu focus chuyển sang editor hoặc các phần tử không phải là input/textarea
-    if (activeElement &&
-        (activeElement.classList.contains('monaco-editor') ||
-         (activeElement.tagName !== 'INPUT' &&
-          activeElement.tagName !== 'TEXTAREA' &&
-          activeElement.tagName !== 'SELECT'))) {
-
-      // Sử dụng setTimeout để đảm bảo focus được thực hiện sau khi sự kiện blur hoàn tất
-      setTimeout(() => {
-        if (terminalRef.current) {
-          console.log('Refocusing terminal after blur');
-          terminalRef.current.focus();
-        }
-      }, 0);
-    }
-  };
 
   // Xử lý khi người dùng nhấn phím trong terminal
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -204,6 +133,31 @@ const Terminal: React.FC<TerminalProps> = ({
       setCursorPosition(cursorPosition + 1);
     }
   };
+
+  // Xử lý click vào terminal để focus
+  const handleTerminalClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Ngăn event bubbling
+    if (terminalRef.current) {
+      terminalRef.current.focus();
+      setCursorPosition(command.length);
+    }
+  };
+
+  // Xử lý focus vào terminal
+  const handleTerminalFocus = () => {
+    console.log("Terminal focused");
+    setCursorPosition(command.length);
+  };
+
+  // Xử lý blur khỏi terminal
+  const handleTerminalBlur = (e: React.FocusEvent) => {
+    // Chỉ blur nếu focus không chuyển sang element con của terminal
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (!terminalRef.current?.contains(relatedTarget)) {
+      console.log("Terminal blurred");
+    }
+  };
+
   return (
     <div className="bg-[#1e1e1e] border-t border-[#3c3c3c] flex flex-col h-full overflow-hidden">
       <div className="flex bg-[#252526] text-sm">
@@ -250,16 +204,16 @@ const Terminal: React.FC<TerminalProps> = ({
 
       {activeTab === 'TERMINAL' && (
         <div
-          className="flex flex-col h-full"
+          className="flex flex-col h-full terminal-container"
           ref={terminalRef}
           tabIndex={0}
           onKeyDown={handleKeyDown}
           onClick={handleTerminalClick}
           onFocus={handleTerminalFocus}
           onBlur={handleTerminalBlur}
-          style={{ outline: 'none' }}
+          style={{ outline: 'none', userSelect: 'text' }}
         >
-          <div className="p-2 text-sm font-mono flex-1 overflow-auto" ref={terminalContentRef}>
+          <div className="p-2 text-sm font-mono flex-1 overflow-auto" ref={terminalContentRef} style={{ userSelect: 'text' }}>
             {isRunning ? (
               <div className="flex items-center text-yellow-400 mb-2">
                 <span className="animate-pulse mr-2">●</span>
@@ -268,7 +222,7 @@ const Terminal: React.FC<TerminalProps> = ({
             ) : null}
 
             {terminalOutput ? (
-              <pre className="whitespace-pre-wrap">
+              <pre className="whitespace-pre-wrap" style={{ userSelect: 'text' }}>
                 {terminalOutput.split('\n').map((line, index) => {
                   // Determine line color based on content
                   let className = "text-white";
@@ -280,7 +234,7 @@ const Terminal: React.FC<TerminalProps> = ({
                     className = "text-yellow-400";
                   }
 
-                  return <div key={index} className={className}>{line}</div>;
+                  return <div key={index} className={className} style={{ userSelect: 'text' }}>{line}</div>;
                 })}
               </pre>
             ) : (
@@ -292,10 +246,10 @@ const Terminal: React.FC<TerminalProps> = ({
             )}
 
             {/* Terminal prompt - tích hợp trong terminal content */}
-            <div className="flex items-start mt-2" ref={promptRef}>
+            <div className="flex items-start mt-2" ref={promptRef} style={{ userSelect: 'text' }}>
               <span className="text-green-400 mr-2">$</span>
-              <div className="relative inline-block text-white">
-                <span>{command}</span>
+              <div className="relative inline-block text-white" style={{ userSelect: 'text' }}>
+                <span style={{ userSelect: 'text' }}>{command}</span>
                 {/* Cursor */}
                 <span
                   className="absolute bg-white opacity-70 w-[2px] h-[14px] animate-pulse"

@@ -8,10 +8,35 @@ contextBridge.exposeInMainWorld('electron', {
             console.log(`Registering IPC listener for channel: ${channel}`);
             return ipcRenderer.on(channel, listener);
         },
+        once: (channel, listener) => {
+            console.log(`Registering IPC once listener for channel: ${channel}`);
+            return ipcRenderer.once(channel, (event, ...args) => {
+                console.log(`Received IPC event on channel: ${channel}`, args);
+                listener(event, ...args);
+            });
+        },
         removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
         getPlugins: () => ipcRenderer.invoke("get-plugins"),
         getAvailablePlugins: () => ipcRenderer.invoke("get-available-plugins"),
-        installPlugin: (pluginName) => ipcRenderer.invoke("install-plugin", pluginName),
+        installPlugin: async (pluginName) => {
+            try {
+                console.log(`Preload: Installing plugin ${pluginName}`);
+                const result = await ipcRenderer.invoke("install-plugin", pluginName);
+                console.log(`Preload: Plugin installation result:`, result);
+                return result;
+            } catch (error) {
+                console.error(`Preload: Error installing plugin ${pluginName}:`, error);
+                // Trả về một đối tượng hợp lệ thay vì ném lỗi
+                return {
+                    name: pluginName,
+                    version: "1.0.0",
+                    description: `Plugin ${pluginName}`,
+                    author: "Unknown",
+                    installed: false,
+                    error: error.message || "Unknown error during installation"
+                };
+            }
+        },
         uninstallPlugin: async (pluginName) => {
             try {
                 console.log(`Preload: Invoking uninstall-plugin for ${pluginName}`);
@@ -58,6 +83,21 @@ contextBridge.exposeInMainWorld('electron', {
         executeTerminalCommand: (command, workingDirectory) => {
             console.log(`Preload: Executing terminal command: ${command}`);
             ipcRenderer.send("execute-terminal-command", { command, workingDirectory });
+        },
+
+        // Execute plugin directly
+        executePlugin: (pluginName, content, options) => {
+            console.log(`Preload: Executing plugin ${pluginName}`);
+            ipcRenderer.send("execute-plugin", { pluginName, content, options });
+        },
+
+        // Xử lý thông báo lỗi cài đặt plugin
+        onPluginInstallError: (callback) => {
+            console.log('Preload: Registering plugin-install-error listener');
+            ipcRenderer.on('plugin-install-error', (event, data) => {
+                console.log('Preload: Received plugin-install-error:', data);
+                callback(data);
+            });
         },
     },
 
