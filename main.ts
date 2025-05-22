@@ -251,39 +251,46 @@ app.whenReady().then(async () => {
   });
 
   // Handle opening a file
-  ipcMain.on("open-file-request", async (event, fileName: string) => {
+  ipcMain.on("open-file-request", async (event, filePath: string) => {
     try {
-      if (!selectedFolder) {
-        throw new Error("No folder selected");
-      }
-      // Lấy tên file từ đường dẫn được truyền vào
-      const fileBaseName = path.basename(fileName);
-      const absolutePath = path.join(selectedFolder, fileBaseName);
+      console.log("Nhận yêu cầu mở file:", filePath);
 
-      // Kiểm tra xem file có tồn tại không
+      // Xử lý đường dẫn
+      let absolutePath = filePath;
+      if (!path.isAbsolute(filePath) && selectedFolder) {
+        absolutePath = path.join(selectedFolder, filePath);
+      }
+
+      console.log("Đường dẫn tuyệt đối:", absolutePath);
+
+      // Kiểm tra file có tồn tại không
       if (!fs.existsSync(absolutePath)) {
-        throw new Error("File does not exist");
+        console.error(`File không tồn tại: ${absolutePath}`);
+        throw new Error(`File không tồn tại: ${absolutePath}`);
       }
 
       const content = fs.readFileSync(absolutePath, "utf-8");
-      console.log("Sending file content for:", fileBaseName);
+      const fileName = path.basename(absolutePath);
+
+      console.log("Gửi nội dung file:", fileName, "độ dài:", content.length);
+
       // Gửi cả hai sự kiện để đảm bảo tương thích
       event.sender.send("file-content", {
         content,
         filePath: absolutePath,
-        fileName: fileBaseName,
+        fileName,
       });
+
       event.sender.send("file-opened", {
         content,
         filePath: absolutePath,
-        fileName: fileBaseName,
+        fileName,
       });
     } catch (error: any) {
+      console.error("Lỗi khi mở file:", error);
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "File not found or inaccessible";
-      console.error("Error reading file:", errorMessage);
+        error instanceof Error ? error.message : "Không thể mở file";
+
       // Gửi cả hai sự kiện để đảm bảo tương thích
       event.sender.send("file-content", { error: errorMessage });
       event.sender.send("file-opened", { error: errorMessage });
@@ -1793,6 +1800,32 @@ ipcMain.on(
     } catch (error) {
       console.error("Error searching in files:", error);
       event.reply("search-results", []);
+    }
+  }
+);
+
+// Thêm IPC handler để di chuyển đến dòng cụ thể trong file
+ipcMain.on(
+  "goto-line",
+  async (event, data: { filePath: string; line: number }) => {
+    try {
+      const { filePath, line } = data;
+
+      // Đọc nội dung file
+      const content = fs.readFileSync(filePath, "utf-8");
+
+      // Gửi nội dung file và thông tin dòng cần di chuyển đến
+      event.sender.send("file-opened", {
+        content,
+        fileName: path.basename(filePath),
+        filePath,
+        gotoLine: line,
+      });
+    } catch (error) {
+      console.error("Error opening file at specific line:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to open file";
+      event.sender.send("file-opened", { error: errorMessage });
     }
   }
 );

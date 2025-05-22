@@ -571,7 +571,12 @@ const Editor: React.FC<EditorProps> = ({
 
     const fileContentListener = (
       _event: IpcRendererEvent,
-      data: { content?: string; filePath?: string; error?: string }
+      data: {
+        content?: string;
+        filePath?: string;
+        error?: string;
+        gotoLine?: number;
+      }
     ) => {
       console.log("Received file-content:", data);
       if (data.error) {
@@ -579,7 +584,7 @@ const Editor: React.FC<EditorProps> = ({
         setTimeout(() => setSaveStatus(null), 3000);
         return;
       }
-      const { content, filePath } = data;
+      const { content, filePath, gotoLine } = data;
       setEditorContent(content || "");
       updateContent(content || "");
       if (!openFiles.includes(filePath || "")) {
@@ -594,8 +599,14 @@ const Editor: React.FC<EditorProps> = ({
         language: detectedLanguage,
       }));
 
-      // Focus lại vào editor sau khi nội dung được cập nhật
-      focusEditor();
+      // Di chuyển đến dòng cụ thể nếu có
+      if (gotoLine !== undefined && editor) {
+        setTimeout(() => {
+          editor.revealLineInCenter(gotoLine);
+          editor.setPosition({ lineNumber: gotoLine, column: 1 });
+          editor.focus();
+        }, 100);
+      }
     };
 
     const fileSavedListener = (
