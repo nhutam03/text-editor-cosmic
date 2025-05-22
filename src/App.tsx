@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import ContentArea from './components/ContentArea';
 import Terminal from './components/Terminal';
 import AIChat from './components/AIChat';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
 import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText, Play, Square, Folder } from 'lucide-react';
 import { MenuItem } from './plugin/MenuContribution';
@@ -945,6 +946,10 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.removeAllListeners("plugin-install-progress");
     window.electron.ipcRenderer.removeAllListeners("plugin-install-success");
     window.electron.ipcRenderer.removeAllListeners("plugin-install-error");
+    window.electron.ipcRenderer.removeAllListeners("plugin-uninstall-success");
+    window.electron.ipcRenderer.removeAllListeners("plugin-uninstall-error");
+    window.electron.ipcRenderer.removeAllListeners("ai-assistant-uninstalled");
+    window.electron.ipcRenderer.removeAllListeners("plugin-disconnected");
 
     // Listen for plugin list updates
     window.electron.ipcRenderer.on("plugin-list", handlePluginListUpdate);
@@ -1023,6 +1028,58 @@ const App: React.FC = () => {
       }
     );
 
+    // Listen for plugin uninstall events
+    window.electron.ipcRenderer.on(
+      "plugin-uninstall-success",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; message: string; isAIAssistant?: boolean }) => {
+        console.log(`Plugin uninstall success: ${data.pluginName} - ${data.message}`);
+
+        // Show success notification
+        if (data.isAIAssistant) {
+          alert(`AI Assistant đã được gỡ cài đặt thành công. Tất cả tính năng AI đã được loại bỏ.`);
+        } else {
+          console.log(`Plugin ${data.pluginName} đã được gỡ cài đặt thành công`);
+        }
+
+        // Force reload menu items after successful uninstall
+        setTimeout(() => {
+          loadPluginMenuItems("file");
+          loadPluginMenuItems("edit");
+          loadPluginMenuItems("run");
+        }, 100);
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "plugin-uninstall-error",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; error: string }) => {
+        console.error(`Plugin uninstall error: ${data.pluginName} - ${data.error}`);
+        alert(`Lỗi khi gỡ cài đặt plugin ${data.pluginName}: ${data.error}`);
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "ai-assistant-uninstalled",
+      (_event: Electron.IpcRendererEvent, data: { message: string }) => {
+        console.log(`AI Assistant uninstalled: ${data.message}`);
+        // Close AI chat if it's open
+        setShowAIChat(false);
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "plugin-disconnected",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string }) => {
+        console.log(`Plugin disconnected: ${data.pluginName}`);
+        // Force reload menu items when plugin disconnects
+        setTimeout(() => {
+          loadPluginMenuItems("file");
+          loadPluginMenuItems("edit");
+          loadPluginMenuItems("run");
+        }, 100);
+      }
+    );
+
     // Load plugin menu items for File, Edit and Run menus
     loadPluginMenuItems("file");
     loadPluginMenuItems("edit");
@@ -1042,6 +1099,10 @@ const App: React.FC = () => {
       window.electron.ipcRenderer.removeAllListeners("plugin-install-progress");
       window.electron.ipcRenderer.removeAllListeners("plugin-install-success");
       window.electron.ipcRenderer.removeAllListeners("plugin-install-error");
+      window.electron.ipcRenderer.removeAllListeners("plugin-uninstall-success");
+      window.electron.ipcRenderer.removeAllListeners("plugin-uninstall-error");
+      window.electron.ipcRenderer.removeAllListeners("ai-assistant-uninstalled");
+      window.electron.ipcRenderer.removeAllListeners("plugin-disconnected");
     };
   }, [activeFile, currentContent, installedPlugins]); // Add dependencies to ensure handler has access to latest state
 

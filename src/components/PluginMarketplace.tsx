@@ -41,6 +41,56 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
       setInstalling(null);
       setError(`Failed to install ${data.pluginName}: ${data.error}`);
     });
+
+    // Đăng ký lắng nghe sự kiện gỡ cài đặt plugin thành công
+    window.electron.ipcRenderer.onPluginUninstallSuccess((data) => {
+      console.log('Received plugin uninstall success:', data);
+      setInstalling(null);
+      setSuccess(`Successfully uninstalled ${data.pluginName}`);
+
+      // Clear selected plugin if it was the one uninstalled
+      if (selectedPlugin && selectedPlugin.name === data.pluginName) {
+        setSelectedPlugin(null);
+      }
+
+      // Reload plugins list
+      loadPlugins().catch(error => {
+        console.error('Error reloading plugins after uninstall success:', error);
+      });
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
+    });
+
+    // Đăng ký lắng nghe sự kiện lỗi gỡ cài đặt plugin
+    window.electron.ipcRenderer.onPluginUninstallError((data) => {
+      console.log('Received plugin uninstall error:', data);
+      setInstalling(null);
+      setError(`Failed to uninstall ${data.pluginName}: ${data.error}`);
+
+      // Clear error message after 5 seconds
+      setTimeout(() => setError(null), 5000);
+    });
+
+    // Đăng ký lắng nghe sự kiện AI Assistant đã được gỡ cài đặt
+    window.electron.ipcRenderer.onAIAssistantUninstalled((data) => {
+      console.log('Received AI Assistant uninstalled:', data);
+      setInstalling(null);
+      setSuccess('AI Assistant has been completely removed from the system');
+
+      // Clear selected plugin if it was AI Assistant
+      if (selectedPlugin && (selectedPlugin.name.includes('ai-assistant') || selectedPlugin.name.includes('AI Assistant'))) {
+        setSelectedPlugin(null);
+      }
+
+      // Reload plugins list
+      loadPlugins().catch(error => {
+        console.error('Error reloading plugins after AI Assistant uninstall:', error);
+      });
+
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccess(null), 5000);
+    });
   }, []);
 
   const loadPlugins = async (): Promise<void> => {
@@ -267,9 +317,16 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
     }
   };
 
-  // Hàm xử lý sự kiện khi nhấn nút Uninstall - Đơn giản hóa tối đa
+  // Hàm xử lý sự kiện khi nhấn nút Uninstall - Cải thiện với error handling tốt hơn
   const handleUninstall = async (pluginName: string): Promise<void> => {
     console.log(`PluginMarketplace: Starting uninstall for ${pluginName}`);
+
+    // Validate plugin name
+    if (!pluginName || typeof pluginName !== 'string') {
+      console.error(`PluginMarketplace: Invalid plugin name: ${pluginName}`);
+      setError('Invalid plugin name');
+      return;
+    }
 
     // Đặt trạng thái
     setInstalling(pluginName);
@@ -283,46 +340,44 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
     }
 
     try {
-      // Gọi API uninstall trực tiếp
+      // Gọi API uninstall với error handling cải thiện
       console.log(`PluginMarketplace: Calling uninstallPlugin API for ${pluginName}`);
-      await window.electron.ipcRenderer.uninstallPlugin(pluginName);
+      const result = await window.electron.ipcRenderer.uninstallPlugin(pluginName);
 
-      // Hiển thị thông báo thành công
-      setSuccess(`Successfully uninstalled ${pluginName}`);
-
-      // Cập nhật danh sách plugin
-      console.log(`PluginMarketplace: Reloading plugins list`);
-      try {
-        await loadPlugins();
-        console.log(`PluginMarketplace: Plugins list reloaded successfully`);
-      } catch (loadError) {
-        console.error(`PluginMarketplace: Error reloading plugins:`, loadError);
-        // Không hiển thị lỗi cho người dùng để tránh làm gián đoạn trải nghiệm
+      // Check if result indicates success
+      if (result && typeof result === 'object' && result.success === false) {
+        throw new Error(result.message || 'Uninstall failed');
       }
 
-      // Ẩn thông báo thành công sau 3 giây
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
+      console.log(`PluginMarketplace: Uninstall API call completed for ${pluginName}`);
+
+      // Note: Success handling is now done via event listeners
+      // The success message will be set by the onPluginUninstallSuccess event handler
+
     } catch (error) {
-      // Xử lý lỗi đơn giản
-      console.error(`PluginMarketplace: Error in handleUninstall:`, error);
-      setError(`Failed to uninstall ${pluginName}. Please try again.`);
+      // Xử lý lỗi với logging chi tiết hơn
+      console.error(`PluginMarketplace: Error in handleUninstall for ${pluginName}:`, error);
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setError(`Failed to uninstall ${pluginName}: ${errorMessage}`);
 
       // Vẫn cố gắng cập nhật danh sách plugin
       try {
         await loadPlugins();
       } catch (loadError) {
-        console.error(`PluginMarketplace: Error reloading plugins:`, loadError);
+        console.error(`PluginMarketplace: Error reloading plugins after uninstall error:`, loadError);
       }
 
-      // Ẩn thông báo lỗi sau 3 giây
+      // Ẩn thông báo lỗi sau 5 giây
       setTimeout(() => {
         setError(null);
-      }, 3000);
+      }, 5000);
     } finally {
-      // Luôn đặt trạng thái installing về null
-      setInstalling(null);
+      // Luôn đặt trạng thái installing về null sau một khoảng thời gian ngắn
+      // để đảm bảo UI được cập nhật đúng cách
+      setTimeout(() => {
+        setInstalling(null);
+      }, 100);
     }
   };
 

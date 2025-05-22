@@ -1092,6 +1092,21 @@ export class PluginInstaller {
           return path.join(this.pluginsDir, dir);
         }
 
+        // Kiểm tra case-insensitive matching với các biến thể tên
+        const dirLower = dir.toLowerCase();
+        const pluginNameLower = pluginName.toLowerCase();
+        const normalizedNameLower = normalizedName.toLowerCase();
+
+        if (dirLower === pluginNameLower ||
+            dirLower === normalizedNameLower ||
+            dirLower.replace(/_/g, '-') === pluginNameLower.replace(/_/g, '-') ||
+            dirLower.replace(/-/g, '_') === pluginNameLower.replace(/-/g, '_') ||
+            dirLower.replace(/_/g, '-') === normalizedNameLower.replace(/_/g, '-') ||
+            dirLower.replace(/-/g, '_') === normalizedNameLower.replace(/-/g, '_')) {
+          console.log(`Found plugin directory with case-insensitive match: ${dir} for ${pluginName}`);
+          return path.join(this.pluginsDir, dir);
+        }
+
         // Kiểm tra package.json để xác định tên plugin
         try {
           const packageJsonPath = path.join(
@@ -1105,8 +1120,11 @@ export class PluginInstaller {
             );
             if (
               packageJson.name === pluginName ||
-              packageJson.name === normalizedName
+              packageJson.name === normalizedName ||
+              packageJson.name.toLowerCase() === pluginNameLower ||
+              packageJson.name.toLowerCase() === normalizedNameLower
             ) {
+              console.log(`Found plugin directory by package.json name match: ${dir} for ${pluginName}`);
               return path.join(this.pluginsDir, dir);
             }
           }

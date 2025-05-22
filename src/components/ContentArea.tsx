@@ -26,6 +26,7 @@ import { IpcRendererEvent } from "electron";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import PluginMarketplace from "./PluginMarketplace";
+import ErrorBoundary from "./ErrorBoundary";
 import {
   ContextMenuTrigger,
   ContextMenuSeparator,
@@ -1806,7 +1807,26 @@ const ContentArea: React.FC<ContentAreaProps> = ({
         </div>
       )}
       {showMarketplace && (
-        <PluginMarketplace onClose={() => setShowMarketplace(false)} />
+        <ErrorBoundary
+          fallback={
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-[#1e1e1e] text-white rounded-lg shadow-lg w-[600px] p-8 text-center">
+                <h2 className="text-xl font-semibold mb-4 text-red-400">Plugin Marketplace Error</h2>
+                <p className="text-gray-300 mb-4">
+                  An error occurred while loading the plugin marketplace. Please try again.
+                </p>
+                <button
+                  onClick={() => setShowMarketplace(false)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <PluginMarketplace onClose={() => setShowMarketplace(false)} />
+        </ErrorBoundary>
       )}
 
       {/* Menu ngữ cảnh */}

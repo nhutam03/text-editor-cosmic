@@ -99,6 +99,42 @@ contextBridge.exposeInMainWorld('electron', {
                 callback(data);
             });
         },
+
+        // Xử lý thông báo thành công gỡ cài đặt plugin
+        onPluginUninstallSuccess: (callback) => {
+            console.log('Preload: Registering plugin-uninstall-success listener');
+            ipcRenderer.on('plugin-uninstall-success', (event, data) => {
+                console.log('Preload: Received plugin-uninstall-success:', data);
+                callback(data);
+            });
+        },
+
+        // Xử lý thông báo lỗi gỡ cài đặt plugin
+        onPluginUninstallError: (callback) => {
+            console.log('Preload: Registering plugin-uninstall-error listener');
+            ipcRenderer.on('plugin-uninstall-error', (event, data) => {
+                console.log('Preload: Received plugin-uninstall-error:', data);
+                callback(data);
+            });
+        },
+
+        // Xử lý thông báo AI Assistant đã được gỡ cài đặt
+        onAIAssistantUninstalled: (callback) => {
+            console.log('Preload: Registering ai-assistant-uninstalled listener');
+            ipcRenderer.on('ai-assistant-uninstalled', (event, data) => {
+                console.log('Preload: Received ai-assistant-uninstalled:', data);
+                callback(data);
+            });
+        },
+
+        // Xử lý thông báo plugin ngắt kết nối
+        onPluginDisconnected: (callback) => {
+            console.log('Preload: Registering plugin-disconnected listener');
+            ipcRenderer.on('plugin-disconnected', (event, data) => {
+                console.log('Preload: Received plugin-disconnected:', data);
+                callback(data);
+            });
+        },
     },
 
 });

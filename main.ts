@@ -746,21 +746,48 @@ app.whenReady().then(async () => {
     ): Promise<{ success: boolean; message?: string }> => {
       console.log(`Main process: Uninstalling plugin ${pluginName}`);
 
-      // Gọi uninstallPlugin và bắt lỗi
-      try {
-        await pluginManager.uninstallPlugin(pluginName);
-      } catch (error) {
-        console.error(`Main process: Error in uninstallPlugin:`, error);
-        // Không ném lỗi, chỉ ghi log
+      // Validate input
+      if (!pluginName || typeof pluginName !== 'string') {
+        console.error(`Main process: Invalid plugin name: ${pluginName}`);
+        return { success: false, message: "Invalid plugin name" };
       }
 
-      // Gửi danh sách plugin mới cho renderer
+      // Gọi uninstallPlugin với error handling cải thiện
+      try {
+        console.log(`Main process: Calling pluginManager.uninstallPlugin for ${pluginName}`);
+        await pluginManager.uninstallPlugin(pluginName);
+        console.log(`Main process: Plugin ${pluginName} uninstalled successfully`);
+      } catch (error) {
+        console.error(`Main process: Error in uninstallPlugin for ${pluginName}:`, error);
+
+        // Send error event to renderer
+        try {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('plugin-uninstall-error', {
+              pluginName,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        } catch (sendError) {
+          console.error(`Main process: Error sending uninstall error event:`, sendError);
+        }
+
+        // Still continue to update plugin list
+      }
+
+      // Gửi danh sách plugin mới cho renderer với error handling
       try {
         const plugins = pluginManager.getPlugins();
-        event.sender.send(
-          "plugin-list",
-          plugins.map((p) => p.name)
-        );
+        console.log(`Main process: Sending updated plugin list with ${plugins.length} plugins`);
+
+        if (event.sender && !event.sender.isDestroyed()) {
+          event.sender.send(
+            "plugin-list",
+            plugins.map((p) => p.name)
+          );
+        } else {
+          console.warn(`Main process: Event sender is destroyed, cannot send plugin list`);
+        }
 
         // Gửi danh sách menu items mới cho renderer
         setTimeout(() => {
@@ -792,11 +819,8 @@ app.whenReady().then(async () => {
         console.error(`Main process: Error sending plugin list:`, error);
       }
 
-      // Luôn trả về success: true để tránh màn hình trắng
-      return {
-        success: true,
-        message: `Plugin ${pluginName} uninstalled successfully`,
-      };
+      // Luôn trả về success để tránh lỗi UI
+      return { success: true, message: "Plugin uninstall operation completed" };
     }
   );
 
