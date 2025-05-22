@@ -1,0 +1,33 @@
+{
+  "appId": "com.cosmic.texteditor",
+  "productName": "Cosmic Text Editor",
+  "files": [
+    "dist/**/*",
+    "preload.js"
+  ],
+  "directories": {
+    "buildResources": "resources",
+    "output": "release-new"
+  },
+  "win": {
+    "target": ["nsis"],
+    "icon": "resources/icon.ico",
+    "signingHashAlgorithms": null,
+    "signAndEditExecutable": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Cosmic Text Editor",
+    "installerIcon": "resources/icon.ico",
+    "uninstallerIcon": "resources/icon.ico"
+  },
+  "extraResources": [
+    {
+      "from": ".env",
+      "to": ".env"
+    }
+  ]
+}

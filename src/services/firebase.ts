@@ -1,28 +1,40 @@
 import { initializeApp } from 'firebase/app';
 import { getStorage, ref, getDownloadURL, listAll, uploadBytes, StorageReference } from 'firebase/storage';
-import * as dotenv from 'dotenv';
-import * as path from 'path';
+import { firebaseConfig } from './firebase-config';
+import * as firebaseMock from './firebase-mock';
 
-// Load environment variables
-const envPath = path.resolve(process.cwd(), '.env');
-console.log('Loading environment variables from:', envPath);
-dotenv.config({ path: envPath });
-
-// Firebase configuration from environment variables
-const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY ,
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID ,
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET ,
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.VITE_FIREBASE_APP_ID,
-  measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID
-};
-
+// Log Firebase configuration for debugging
+console.log('Firebase configuration loaded:', {
+  apiKey: firebaseConfig.apiKey ? '✓ Set' : '✗ Missing',
+  authDomain: firebaseConfig.authDomain ? '✓ Set' : '✗ Missing',
+  projectId: firebaseConfig.projectId ? '✓ Set' : '✗ Missing',
+  storageBucket: firebaseConfig.storageBucket ? '✓ Set' : '✗ Missing',
+  messagingSenderId: firebaseConfig.messagingSenderId ? '✓ Set' : '✗ Missing',
+  appId: firebaseConfig.appId ? '✓ Set' : '✗ Missing',
+  measurementId: firebaseConfig.measurementId ? '✓ Set' : '✗ Missing'
+});
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const storage = getStorage(app);
+let app: any;
+let storage: any;
+let useMockImplementation = false;
+
+try {
+  // Check if storageBucket is set
+  if (!firebaseConfig.storageBucket) {
+    console.error('Firebase Storage Bucket is not set in the configuration!');
+    console.error('Please check your .env file and make sure VITE_FIREBASE_STORAGE_BUCKET is set correctly.');
+    throw new Error('Firebase Storage: No default bucket found. Did you set the storageBucket property?');
+  }
+
+  app = initializeApp(firebaseConfig);
+  storage = getStorage(app);
+  console.log('Firebase initialized successfully with storage bucket:', firebaseConfig.storageBucket);
+} catch (error) {
+  console.error('Error initializing Firebase:', error);
+  console.log('Falling back to mock implementation for Firebase Storage');
+  useMockImplementation = true;
+}
 
 // Function to check if Firebase Storage is properly configured
 async function checkFirebaseStorage() {
@@ -110,8 +122,13 @@ checkFirebaseStorage().then(async isConfigured => {
  * Get a list of all available plugins from Firebase Storage
  */
 export async function getAvailablePlugins(): Promise<{ name: string, ref: StorageReference }[]> {
-  try {
+  // If we're using mock implementation, use the mock function
+  if (useMockImplementation) {
+    console.log('Using mock getAvailablePlugins');
+    return firebaseMock.getAvailablePlugins();
+  }
 
+  try {
     const result = await listAll(pluginsRef);
     result.items.forEach(item => {
       console.log('- Plugin:', item.name, 'Full path:', item.fullPath);
@@ -134,8 +151,9 @@ export async function getAvailablePlugins(): Promise<{ name: string, ref: Storag
     console.error('Plugins reference path:', pluginsRef.fullPath);
     console.error('Current working directory:', process.cwd());
 
-    // Trả về mảng rỗng thay vì ném lỗi
-    return [];
+    // Fall back to mock implementation
+    console.log('Falling back to mock getAvailablePlugins due to error');
+    return firebaseMock.getAvailablePlugins();
   }
 }
 
@@ -143,11 +161,73 @@ export async function getAvailablePlugins(): Promise<{ name: string, ref: Storag
  * Get download URL for a plugin
  */
 export async function getPluginDownloadUrl(pluginRef: StorageReference): Promise<string> {
+  // If we're using mock implementation, use the mock function
+  if (useMockImplementation) {
+    console.log('Using mock getPluginDownloadUrl');
+    return firebaseMock.getPluginDownloadUrl(pluginRef);
+  }
+
   try {
-    return await getDownloadURL(pluginRef);
-  } catch (error) {
+    // Check if pluginRef is valid
+    if (!pluginRef || typeof pluginRef.name !== 'string') {
+      console.error('Invalid plugin reference:', pluginRef);
+      throw new Error('Invalid plugin reference');
+    }
+
+    // Extract plugin name from reference to handle it safely
+    const pluginName = pluginRef.name.replace('.zip', '');
+    console.log(`Getting download URL for plugin reference: ${pluginName}`);
+    console.log(`Plugin reference full path: ${pluginRef.fullPath}`);
+
+    // Create a new reference to ensure it's properly initialized
+    const safeRef = ref(storage, `/plugins/${pluginName}.zip`);
+    console.log(`Created safe reference with path: ${safeRef.fullPath}`);
+
+    // Get the download URL using the safe reference
+    const url = await getDownloadURL(safeRef);
+    console.log(`Successfully got download URL for ${pluginName}: ${url}`);
+    return url;
+  } catch (error: any) {
     console.error('Error getting plugin download URL:', error);
-    throw error;
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+
+    if (error.customData) {
+      console.error('Server response:', error.customData.serverResponse);
+    }
+
+    // Extract plugin name from reference for fallback
+    const pluginName = pluginRef?.name?.replace('.zip', '') || 'unknown';
+
+    // Không sử dụng URL hardcode nữa, thay vào đó sẽ tạo URL dựa trên tên plugin và bucket
+    console.log(`Không sử dụng URL hardcode, sẽ tạo URL dựa trên tên plugin và bucket`);
+
+    // Tạo URL dựa trên tên plugin và bucket
+    const bucket = firebaseConfig.storageBucket;
+    const pluginFileName = `${pluginName}.zip`;
+    const encodedPluginName = encodeURIComponent(`plugins/${pluginFileName}`);
+    const dynamicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPluginName}?alt=media`;
+
+    console.log(`Tạo URL động cho plugin ${pluginName}: ${dynamicUrl}`);
+
+    // Kiểm tra URL bằng cách gửi request HEAD
+    try {
+      const response = await fetch(dynamicUrl, { method: 'HEAD' });
+      if (response.ok) {
+        console.log(`URL hợp lệ và có thể truy cập: ${dynamicUrl}`);
+        return dynamicUrl;
+      } else {
+        console.log(`URL trả về status ${response.status}: ${dynamicUrl}`);
+        // Tiếp tục với getPluginDownloadUrlByName
+      }
+    } catch (error) {
+      console.log(`Lỗi kiểm tra URL: ${error}`);
+      // Tiếp tục với getPluginDownloadUrlByName
+    }
+
+    // Fall back to getPluginDownloadUrlByName which has better error handling
+    console.log(`Falling back to getPluginDownloadUrlByName for ${pluginName}`);
+    return getPluginDownloadUrlByName(pluginName);
   }
 }
 
@@ -155,6 +235,12 @@ export async function getPluginDownloadUrl(pluginRef: StorageReference): Promise
  * Get download URL for a plugin by name
  */
 export async function getPluginDownloadUrlByName(pluginName: string): Promise<string> {
+  // If we're using mock implementation, use the mock function
+  if (useMockImplementation) {
+    console.log('Using mock getPluginDownloadUrlByName');
+    return firebaseMock.getPluginDownloadUrlByName(pluginName);
+  }
+
   try {
     console.log(`Getting download URL for plugin: ${pluginName}`);
 
@@ -162,41 +248,94 @@ export async function getPluginDownloadUrlByName(pluginName: string): Promise<st
     const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
     console.log(`Normalized plugin name: ${normalizedName}`);
 
-    // Try different possible plugin names
-    const possibleNames = [
-      pluginName,                // Original name
-      normalizedName,            // Normalized name
-      `${normalizedName}-1.0.0`, // With version
-      'export-to-pdf',           // Specific for export-to-pdf plugin
-      'export-to-pdf-1.0.0',     // Specific version for export-to-pdf
-      'pdf-export',              // Alternative name for export-to-pdf
-      'prettier-plugin',         // Specific for prettier plugin
-      'prettier-plugin-1.0.0',   // Specific version for prettier
-      'prettier'                 // Alternative name for prettier
-    ];
+    // Tạo tham chiếu đến plugin trong Firebase Storage
+    const pluginRef = ref(storage, `/plugins/${normalizedName}.zip`);
+    console.log(`Plugin reference path: ${pluginRef.fullPath}`);
 
-    // Thử trực tiếp với URL từ Firebase Storage
-    if (normalizedName === 'export-to-pdf') {
+    try {
+      // Lấy URL tải xuống từ Firebase Storage
+      const downloadUrl = await getDownloadURL(pluginRef);
+      console.log(`Found download URL for ${normalizedName}: ${downloadUrl}`);
+      return downloadUrl;
+    } catch (error) {
+      console.log(`Error getting download URL for ${normalizedName}: ${error}`);
+
+      // Thử với tên đầy đủ nếu tên chuẩn hóa không hoạt động
+      const fullNameRef = ref(storage, `/plugins/${pluginName}.zip`);
+      console.log(`Trying with full name: ${fullNameRef.fullPath}`);
+
       try {
-        // URL từ Firebase Storage trong hình ảnh của bạn
-        const directUrl = 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fexport-to-pdf-1.0.0.zip?alt=media';
-        console.log(`Trying direct URL for export-to-pdf: ${directUrl}`);
-        return directUrl;
-      } catch (directError) {
-        console.log('Direct URL failed, continuing with other methods');
+        const fullNameUrl = await getDownloadURL(fullNameRef);
+        console.log(`Found download URL for ${pluginName}: ${fullNameUrl}`);
+        return fullNameUrl;
+      } catch (fullNameError) {
+        console.log(`Error getting download URL for ${pluginName}: ${fullNameError}`);
+
+        // Thử với tên có phiên bản
+        const versionedRef = ref(storage, `/plugins/${normalizedName}-1.0.0.zip`);
+        console.log(`Trying with versioned name: ${versionedRef.fullPath}`);
+
+        try {
+          const versionedUrl = await getDownloadURL(versionedRef);
+          console.log(`Found download URL for ${normalizedName}-1.0.0: ${versionedUrl}`);
+          return versionedUrl;
+        } catch (versionedError) {
+          console.log(`Error getting download URL for ${normalizedName}-1.0.0: ${versionedError}`);
+          // Tiếp tục với các phương pháp khác
+        }
       }
     }
+
+    // Tạo tham chiếu đến plugin trong Firebase Storage
+    console.log(`Creating reference to plugin in Firebase Storage: ${pluginName}`);
+
+    // Tạo danh sách các tên file có thể có
+    const possibleFileNames = [
+      `${pluginName}.zip`,
+      `${normalizedName}.zip`,
+      `${normalizedName}-1.0.0.zip`,
+      `${pluginName}-1.0.0.zip`
+    ];
+
+    // Thử từng tên file
+    for (const fileName of possibleFileNames) {
+      try {
+        console.log(`Trying to get plugin with filename: ${fileName}`);
+        const pluginRef = ref(storage, `/plugins/${fileName}`);
+        console.log(`Plugin reference path: ${pluginRef.fullPath}`);
+
+        // Lấy URL tải xuống từ Firebase Storage
+        const downloadUrl = await getDownloadURL(pluginRef);
+        console.log(`Found download URL for ${fileName}: ${downloadUrl}`);
+        return downloadUrl;
+      } catch (error) {
+        console.log(`Error getting download URL for ${fileName}: ${error}`);
+        // Tiếp tục với tên file tiếp theo
+      }
+    }
+
+    // Thử với các tên plugin khác nhau
+    const possibleNames = [
+      pluginName,                // Tên gốc
+      normalizedName,            // Tên chuẩn hóa
+      `${normalizedName}-1.0.0`  // Với phiên bản
+    ];
 
     // Try each possible name
     for (const name of possibleNames) {
       try {
         console.log(`Trying to get download URL for: ${name}`);
         const pluginRef = ref(storage, `/plugins/${name}.zip`);
+        console.log(`Created reference with path: ${pluginRef.fullPath}`);
+
         const downloadUrl = await getDownloadURL(pluginRef);
         console.log(`Found download URL for ${name}: ${downloadUrl}`);
         return downloadUrl;
-      } catch (nameError) {
+      } catch (nameError: any) {
         console.log(`No plugin found with name: ${name}`);
+        if (nameError.code) {
+          console.log(`Error code: ${nameError.code}`);
+        }
         // Continue to the next name
       }
     }
@@ -217,14 +356,44 @@ export async function getPluginDownloadUrlByName(pluginName: string): Promise<st
       }
     }
 
-    // Nếu vẫn không tìm thấy, thử URL cứng cho export-to-pdf
-    if (normalizedName === 'export-to-pdf') {
-      console.log('Falling back to hardcoded URL for export-to-pdf');
-      return 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fexport-to-pdf-1.0.0.zip?alt=media';
+    // Tạo URL động dựa trên tên plugin và bucket
+    console.log(`Tạo URL động dựa trên tên plugin và bucket`);
+
+    // Danh sách các tên file có thể có
+    const dynamicFileNames = [
+      `${normalizedName}.zip`,
+      `${normalizedName}-1.0.0.zip`,
+      `${pluginName}.zip`,
+      `${pluginName}-1.0.0.zip`
+    ];
+
+    // Thử từng tên file
+    for (const fileName of dynamicFileNames) {
+      try {
+        const bucket = firebaseConfig.storageBucket;
+        const encodedPluginName = encodeURIComponent(`plugins/${fileName}`);
+        const dynamicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPluginName}?alt=media`;
+
+        console.log(`Thử URL động: ${dynamicUrl}`);
+
+        // Kiểm tra URL bằng cách gửi request HEAD
+        const response = await fetch(dynamicUrl, { method: 'HEAD' });
+        if (response.ok) {
+          console.log(`URL hợp lệ và có thể truy cập: ${dynamicUrl}`);
+          return dynamicUrl;
+        } else {
+          console.log(`URL trả về status ${response.status}: ${dynamicUrl}`);
+          // Tiếp tục với tên file tiếp theo
+        }
+      } catch (error) {
+        console.log(`Lỗi kiểm tra URL: ${error}`);
+        // Tiếp tục với tên file tiếp theo
+      }
     }
 
-    // If we still can't find it, throw an error
-    throw new Error(`Plugin ${pluginName} not found in Firebase Storage`);
+    // If we still can't find it, fall back to mock implementation
+    console.log(`Plugin ${pluginName} not found in Firebase Storage, falling back to mock`);
+    return firebaseMock.getPluginDownloadUrlByName(pluginName);
   } catch (error: any) {
     console.error(`Error getting download URL for plugin ${pluginName}:`, error);
     console.error('Error code:', error.code);
@@ -237,12 +406,28 @@ export async function getPluginDownloadUrlByName(pluginName: string): Promise<st
     console.error('Storage bucket used:', firebaseConfig.storageBucket);
     console.error('Current working directory:', process.cwd());
 
-    // Nếu là export-to-pdf, trả về URL cứng ngay cả khi có lỗi
-    if (pluginName === 'export-to-pdf' || pluginName.includes('export-to-pdf')) {
-      console.log('Error occurred but returning hardcoded URL for export-to-pdf');
-      return 'https://firebasestorage.googleapis.com/v0/b/cosmic-text-editor.appspot.com/o/plugins%2Fexport-to-pdf-1.0.0.zip?alt=media';
+    // Thử tạo URL trực tiếp dựa trên tên plugin và bucket
+    try {
+      const bucket = firebaseConfig.storageBucket;
+      const encodedPluginName = encodeURIComponent(`plugins/${pluginName}.zip`);
+      const directUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPluginName}?alt=media`;
+
+      console.log(`Trying direct URL construction: ${directUrl}`);
+
+      // Kiểm tra xem URL có tồn tại không
+      const response = await fetch(directUrl, { method: 'HEAD' });
+      if (response.ok) {
+        console.log(`Direct URL exists and is accessible: ${directUrl}`);
+        return directUrl;
+      } else {
+        console.log(`Direct URL returned status ${response.status}: ${directUrl}`);
+      }
+    } catch (error) {
+      console.log(`Error checking direct URL: ${error}`);
     }
 
-    throw error;
+    // Fall back to mock implementation
+    console.log('Falling back to mock getPluginDownloadUrlByName due to error');
+    return firebaseMock.getPluginDownloadUrlByName(pluginName);
   }
 }

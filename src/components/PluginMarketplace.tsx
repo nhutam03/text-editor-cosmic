@@ -34,6 +34,13 @@ const PluginMarketplace: React.FC<PluginMarketplaceProps> = ({ onClose }) => {
 
   useEffect(() => {
     loadPlugins();
+
+    // Đăng ký lắng nghe sự kiện lỗi cài đặt plugin
+    window.electron.ipcRenderer.onPluginInstallError((data) => {
+      console.log('Received plugin install error:', data);
+      setInstalling(null);
+      setError(`Failed to install ${data.pluginName}: ${data.error}`);
+    });
   }, []);
 
   const loadPlugins = async (): Promise<void> => {

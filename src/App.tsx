@@ -1,34 +1,13 @@
-import React, { useEffect, useState, useRef } from "react";
-import Editor from "./components/Editor";
-import Sidebar from "./components/Sidebar";
-import ContentArea from "./components/ContentArea";
-import Terminal from "./components/Terminal";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "./components/ui/resizable";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  X,
-  Maximize2,
-  Minimize2,
-  Save,
-  FolderOpen,
-  FilePlus,
-  Copy,
-  Scissors,
-  Clipboard,
-  FileText,
-  Play,
-  Square,
-  Folder,
-  Search as SearchIcon,
-} from "lucide-react";
-import { MenuItem } from "./plugin/MenuContribution";
-import path from "path";
+import React, { useEffect, useState, useRef } from 'react';
+import Editor from './components/Editor';
+import Sidebar from './components/Sidebar';
+import ContentArea from './components/ContentArea';
+import Terminal from './components/Terminal';
+import AIChat from './components/AIChat';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
+import { ChevronLeft, ChevronRight, Search, X, Maximize2, Minimize2, Save, FolderOpen, FilePlus, Copy, Scissors, Clipboard, FileText, Play, Square, Folder } from 'lucide-react';
+import { MenuItem } from './plugin/MenuContribution';
+import path from 'path';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState("explorer");
@@ -47,6 +26,7 @@ const App: React.FC = () => {
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [showRunMenu, setShowRunMenu] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
   // Vẫn giữ lại state này để sử dụng cho các plugin khác
   const [installedPlugins, setInstalledPlugins] = useState<string[]>([]);
   const [pluginMenuItems, setPluginMenuItems] = useState<MenuItem[]>([]);
@@ -378,15 +358,8 @@ const App: React.FC = () => {
         }
       });
 
-      // Đặt timeout để đảm bảo terminal được hiển thị trước khi focus vào nó
-      setTimeout(() => {
-        // Tìm terminal element và focus vào nó
-        const terminalElement = document.querySelector('[tabindex="0"]');
-        if (terminalElement) {
-          console.log("Focusing terminal after F5 key press");
-          (terminalElement as HTMLElement).focus();
-        }
-      }, 100);
+      // Không tự động focus vào terminal
+      // Để người dùng tự do điều khiển focus
     } else {
       alert(
         "No file is currently open. Please open a file before running code."
@@ -438,6 +411,17 @@ const App: React.FC = () => {
       }, 500);
     }
     closeAllMenus();
+  };
+
+  // Hàm xử lý hiển thị AI Chat
+  const handleShowAIChat = () => {
+    setShowAIChat(true);
+    closeAllMenus();
+  };
+
+  // Hàm xử lý đóng AI Chat
+  const handleCloseAIChat = () => {
+    setShowAIChat(false);
   };
 
   const handleCloseFile = (fileName: string) => {
@@ -532,6 +516,11 @@ const App: React.FC = () => {
       if (e.ctrlKey && e.key === "e") {
         e.preventDefault();
         handleExportToPdf();
+      }
+      // Alt+A để mở AI Chat
+      if (e.altKey && e.key === 'a') {
+        e.preventDefault();
+        handleShowAIChat();
       }
       // F5 để mở terminal và gợi ý lệnh chạy code
       if (e.key === "F5") {
@@ -665,12 +654,14 @@ const App: React.FC = () => {
 
   // Không cần hàm focus lại vào editor nữa vì chúng ta muốn giữ focus ở terminal
 
-  // Lắng nghe kết quả chạy code
+  // Lắng nghe kết quả chạy code và terminal
   useEffect(() => {
     // Hủy đăng ký các listener cũ trước khi đăng ký mới
     window.electron.ipcRenderer.removeAllListeners("run-code-output");
     window.electron.ipcRenderer.removeAllListeners("run-code-result");
     window.electron.ipcRenderer.removeAllListeners("stop-execution-result");
+    window.electron.ipcRenderer.removeAllListeners("terminal-output");
+    window.electron.ipcRenderer.removeAllListeners("terminal-result");
 
     const handleRunCodeOutput = (
       _event: any,
@@ -694,17 +685,8 @@ const App: React.FC = () => {
           }\n`
       );
 
-      // Không focus lại vào editor sau khi nhận kết quả chạy code
-      // Bỏ hoàn toàn việc focus lại vào editor để giữ focus ở terminal
-
-      // Đảm bảo terminal vẫn giữ focus sau khi nhận kết quả
-      setTimeout(() => {
-        const terminalElement = document.querySelector('[tabindex="0"]');
-        if (terminalElement) {
-          console.log("Refocusing terminal after command execution");
-          (terminalElement as HTMLElement).focus();
-        }
-      }, 50);
+      // Không tự động focus vào terminal hoặc editor
+      // Để người dùng tự do điều khiển focus
     };
 
     const handleStopExecutionResult = (_event: any, result: any) => {
@@ -729,6 +711,30 @@ const App: React.FC = () => {
       }, 50);
     };
 
+    // Xử lý output từ terminal command
+    const handleTerminalOutput = (
+      _event: any,
+      data: { type: string; text: string }
+    ) => {
+      console.log(`Terminal output (${data.type}):`, data.text);
+      setTerminalOutput((prev) => prev + data.text);
+    };
+
+    // Xử lý kết quả terminal command
+    const handleTerminalResult = (_event: any, result: any) => {
+      console.log("Terminal result:", result);
+      setIsRunning(false);
+
+      // Thêm thông báo kết thúc
+      setTerminalOutput(
+        (prev) =>
+          prev +
+          `\n--- ${result.success ? "COMPLETED" : "FAILED"} ---\n${
+            result.message
+          }\n`
+      );
+    };
+
     // Đăng ký các listener
     window.electron.ipcRenderer.on("run-code-output", handleRunCodeOutput);
     window.electron.ipcRenderer.on("run-code-result", handleRunCodeResult);
@@ -736,12 +742,16 @@ const App: React.FC = () => {
       "stop-execution-result",
       handleStopExecutionResult
     );
+    window.electron.ipcRenderer.on("terminal-output", handleTerminalOutput);
+    window.electron.ipcRenderer.on("terminal-result", handleTerminalResult);
 
     return () => {
       // Hủy đăng ký các listener
       window.electron.ipcRenderer.removeAllListeners("run-code-output");
       window.electron.ipcRenderer.removeAllListeners("run-code-result");
       window.electron.ipcRenderer.removeAllListeners("stop-execution-result");
+      window.electron.ipcRenderer.removeAllListeners("terminal-output");
+      window.electron.ipcRenderer.removeAllListeners("terminal-result");
     };
   }, []);
 
@@ -916,6 +926,13 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.removeAllListeners("plugin-list");
     window.electron.ipcRenderer.removeAllListeners("menu-items-changed");
     window.electron.ipcRenderer.removeAllListeners("menu-action-result");
+    window.electron.ipcRenderer.removeAllListeners("plugin-connection-error");
+    window.electron.ipcRenderer.removeAllListeners("plugin-error");
+    window.electron.ipcRenderer.removeAllListeners("initialization-error");
+    window.electron.ipcRenderer.removeAllListeners("plugin-install-start");
+    window.electron.ipcRenderer.removeAllListeners("plugin-install-progress");
+    window.electron.ipcRenderer.removeAllListeners("plugin-install-success");
+    window.electron.ipcRenderer.removeAllListeners("plugin-install-error");
 
     // Listen for plugin list updates
     window.electron.ipcRenderer.on("plugin-list", handlePluginListUpdate);
@@ -926,6 +943,72 @@ const App: React.FC = () => {
     window.electron.ipcRenderer.on(
       "menu-action-result",
       handleMenuActionResult
+    );
+
+    // Lắng nghe sự kiện lỗi kết nối plugin
+    window.electron.ipcRenderer.on(
+      "plugin-connection-error",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; error: string }) => {
+        console.log("Received plugin connection error:", data);
+        // Hiển thị thông báo lỗi cho người dùng
+        const { pluginName, error } = data;
+        alert(`Lỗi kết nối plugin ${pluginName}: ${error}`);
+      }
+    );
+
+    // Lắng nghe sự kiện lỗi plugin
+    window.electron.ipcRenderer.on(
+      "plugin-error",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; error: string }) => {
+        console.log("Received plugin error:", data);
+        // Hiển thị thông báo lỗi cho người dùng
+        const { pluginName, error } = data;
+        alert(`Lỗi plugin ${pluginName}: ${error}`);
+      }
+    );
+
+    // Lắng nghe sự kiện lỗi khởi tạo
+    window.electron.ipcRenderer.on(
+      "initialization-error",
+      (_event: Electron.IpcRendererEvent, data: { error: string }) => {
+        console.log("Received initialization error:", data);
+        // Hiển thị thông báo lỗi cho người dùng
+        const { error } = data;
+        alert(`Lỗi khởi tạo ứng dụng: ${error}`);
+      }
+    );
+
+    // Listen for plugin installation events
+    window.electron.ipcRenderer.on(
+      "plugin-install-start",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; message: string }) => {
+        console.log(`Plugin installation started: ${data.pluginName}`);
+        // You can show a loading indicator here
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "plugin-install-progress",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; message: string; progress: number }) => {
+        console.log(`Plugin installation progress: ${data.pluginName} - ${data.progress}% - ${data.message}`);
+        // You can update a progress bar here
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "plugin-install-success",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; message: string; progress?: number }) => {
+        console.log(`Plugin installation success: ${data.pluginName} - ${data.message}`);
+        // You can show a success message here
+      }
+    );
+
+    window.electron.ipcRenderer.on(
+      "plugin-install-error",
+      (_event: Electron.IpcRendererEvent, data: { pluginName: string; error: string }) => {
+        console.error(`Plugin installation error: ${data.pluginName} - ${data.error}`);
+        // You can show an error message here
+      }
     );
 
     // Load plugin menu items for File, Edit and Run menus
@@ -940,6 +1023,13 @@ const App: React.FC = () => {
       window.electron.ipcRenderer.removeAllListeners("plugin-list");
       window.electron.ipcRenderer.removeAllListeners("menu-items-changed");
       window.electron.ipcRenderer.removeAllListeners("menu-action-result");
+      window.electron.ipcRenderer.removeAllListeners("plugin-connection-error");
+      window.electron.ipcRenderer.removeAllListeners("plugin-error");
+      window.electron.ipcRenderer.removeAllListeners("initialization-error");
+      window.electron.ipcRenderer.removeAllListeners("plugin-install-start");
+      window.electron.ipcRenderer.removeAllListeners("plugin-install-progress");
+      window.electron.ipcRenderer.removeAllListeners("plugin-install-success");
+      window.electron.ipcRenderer.removeAllListeners("plugin-install-error");
     };
   }, [activeFile, currentContent, installedPlugins]); // Add dependencies to ensure handler has access to latest state
 
@@ -1006,13 +1096,20 @@ const App: React.FC = () => {
     result: {
       success: boolean;
       message: string;
-      data?: { formattedText?: string; [key: string]: any };
+      data?: { formattedText?: string; action?: string; [key: string]: any };
     }
   ) => {
     console.log("Menu action result:", result);
     if (result.success) {
       // Handle successful menu action
       console.log("Menu action executed successfully:", result.message);
+
+      // Check if this is an AI Chat action
+      if (result.data && result.data.action === 'open-ai-chat') {
+        console.log("Opening AI Chat from menu action");
+        setShowAIChat(true);
+        return;
+      }
 
       // Check if the result contains formatted text (from Prettier plugin)
       if (result.data && result.data.formattedText !== undefined) {
@@ -1258,6 +1355,7 @@ const App: React.FC = () => {
                     onClick={toggleTerminal}
                   >
                     <span>Toggle Terminal</span>
+                    <span className="ml-auto text-xs text-gray-400">Ctrl+Shift+`</span>
                   </div>
                   <div
                     className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
@@ -1267,6 +1365,13 @@ const App: React.FC = () => {
                     }}
                   >
                     <span>Toggle Explorer</span>
+                  </div>
+                  <div
+                    className="flex items-center px-2 py-1 hover:bg-[#505050] cursor-pointer menu-item"
+                    onClick={handleShowAIChat}
+                  >
+                    <span>AI Chat</span>
+                    <span className="ml-auto text-xs text-gray-400">Alt+A</span>
                   </div>
                 </div>
               </div>
@@ -1522,6 +1627,9 @@ const App: React.FC = () => {
       </div>
 
       {/* Terminal đã được di chuyển vào bên trong editor */}
+
+      {/* AI Chat */}
+      {showAIChat && <AIChat onClose={handleCloseAIChat} />}
 
       {/* Status Bar */}
       <div className="flex items-center justify-between bg-[#007acc] text-white text-xs h-[22px] px-2">

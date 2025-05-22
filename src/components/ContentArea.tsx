@@ -87,6 +87,8 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   const folderMenuRef = useRef<HTMLDivElement>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+<<<<<<< HEAD
+=======
   const [searchResults, setSearchResults] = useState<
     Array<{
       filePath: string;
@@ -101,6 +103,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   const [expandedSearchFiles, setExpandedSearchFiles] = useState<Set<string>>(
     new Set()
   );
+>>>>>>> 4c8d94c22b2ea0598f488f23bf17a71e8c57905f
 
   const renderContent = () => {
     switch (activeTab) {
@@ -618,9 +621,9 @@ const ContentArea: React.FC<ContentAreaProps> = ({
     });
   };
 
-  const toggleRootFolder = () => {
-    setShowChildren(!showChildren);
-  };
+    const toggleRootFolder = () => {
+        setShowChildren(prev => !prev);
+    };
 
   // Hàm lấy biểu tượng cho từng loại file
   const getFileIcon = (fileName: string) => {
