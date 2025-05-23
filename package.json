@@ -14,10 +14,12 @@
     "build-electron": "tsc --project tsconfig.electron.json && copy preload.js dist\\preload.js",
     "electron": "npm run build-electron && electron .",
     "electron-dev": "cross-env ELECTRON=true concurrently \"npm run dev\" \"node electron-dev.js\"",
-    "dist": "npm run build && npm run build-electron && electron-builder",
+    "dist": "npm run generate-configs && npm run build && npm run build-electron && electron-builder",
     "clean": "rimraf dist",
     "rebuild": "npm run clean && npm run build && npm run build-electron",
-    "dev-full": "npm run rebuild && npm run electron-dev"
+    "dev-full": "npm run rebuild && npm run electron-dev",
+    "generate-configs": "node scripts/generate-package-config.js && node scripts/generate-electron-config.js",
+    "test-env": "node scripts/test-env-vars.js"
   },
   "build": {
     "appId": "com.cosmic.texteditor",

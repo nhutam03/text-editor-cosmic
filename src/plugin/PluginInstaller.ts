@@ -776,11 +776,16 @@ export class PluginInstaller {
               console.log(`Tạo URL động cho plugin ${pluginName}: ${fallbackUrl}`);
             } catch (error) {
               console.error(`Lỗi tạo URL động: ${error}`);
-              // Tạo URL với bucket mặc định
-              const mockBucket = 'cosmic-text-editor.firebasestorage.app';
+              // Tạo URL với bucket từ biến môi trường
+              const envBucket = process.env.VITE_FIREBASE_STORAGE_BUCKET;
+              if (!envBucket) {
+                console.error('Firebase storage bucket not found in environment variables');
+                reject(new Error('Firebase storage bucket not configured'));
+                return;
+              }
               const encodedPluginName = encodeURIComponent(`plugins/${pluginName}-1.0.0.zip`);
-              fallbackUrl = `https://firebasestorage.googleapis.com/v0/b/${mockBucket}/o/${encodedPluginName}?alt=media`;
-              console.log(`Sử dụng URL mặc định: ${fallbackUrl}`);
+              fallbackUrl = `https://firebasestorage.googleapis.com/v0/b/${envBucket}/o/${encodedPluginName}?alt=media`;
+              console.log(`Sử dụng URL từ biến môi trường: ${fallbackUrl}`);
             }
 
             console.log(`Using fallback URL: ${fallbackUrl}`);

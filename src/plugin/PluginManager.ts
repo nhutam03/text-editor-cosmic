@@ -50,12 +50,16 @@ export class PluginManager {
   private menuRegistry: MenuRegistry;
   private mainWindow: Electron.BrowserWindow | null = null;
 
-  constructor(port: number = 5001) { // Thay đổi cổng mặc định thành 5001 để khớp với Firebase emulator
-    this.port = port;
+  constructor(port?: number) {
+    // Use environment variable for port
+    const envPort = process.env.VITE_PLUGIN_PORT ? parseInt(process.env.VITE_PLUGIN_PORT) : undefined;
+    this.port = port || envPort || 5001; // Only fallback to 5001 if no env var and no parameter
     this.onPluginListChanged = () => {}; // Mặc định không làm gì
     this.onMenuItemsChanged = () => {}; // Mặc định không làm gì
     this.pluginInstaller = new PluginInstaller();
     this.menuRegistry = MenuRegistry.getInstance();
+
+    console.log(`🔌 [PluginManager] Initialized with port: ${this.port} (from ${port ? 'parameter' : envPort ? 'environment' : 'default'})`);
   }
 
   /**
@@ -136,8 +140,9 @@ export class PluginManager {
         });
 
         // Khởi động server
-        this.server.listen(this.port, "127.0.0.1", () => {
-          console.log(`Plugin server running on 127.0.0.1:${this.port}`);
+        const serverHost = process.env.VITE_PLUGIN_SERVER_HOST || "127.0.0.1";
+        this.server.listen(this.port, serverHost, () => {
+          console.log(`Plugin server running on ${serverHost}:${this.port} (host from ${process.env.VITE_PLUGIN_SERVER_HOST ? 'environment' : 'default'})`);
           resolve();
         });
       });
@@ -200,8 +205,9 @@ export class PluginManager {
       });
 
       // Khởi động server với cổng thay thế
-      this.server.listen(this.port, "127.0.0.1", () => {
-        console.log(`Plugin server running on alternative port 127.0.0.1:${this.port}`);
+      const serverHost = process.env.VITE_PLUGIN_SERVER_HOST || "127.0.0.1";
+      this.server.listen(this.port, serverHost, () => {
+        console.log(`Plugin server running on alternative port ${serverHost}:${this.port} (host from ${process.env.VITE_PLUGIN_SERVER_HOST ? 'environment' : 'default'})`);
       });
     }
 

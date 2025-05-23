@@ -8,7 +8,7 @@ export class SimpleDownloader {
    */
   static async downloadFile(url: string, destination: string, maxRetries: number = 3): Promise<void> {
     let lastError: Error | null = null;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`Download attempt ${attempt}/${maxRetries}: ${url}`);
@@ -18,10 +18,10 @@ export class SimpleDownloader {
       } catch (error) {
         lastError = error as Error;
         console.error(`❌ Download attempt ${attempt} failed:`, error);
-        
+
         // Clean up partial file
         this.cleanupFile(destination);
-        
+
         if (attempt < maxRetries) {
           const delay = attempt * 2000; // Exponential backoff: 2s, 4s, 6s
           console.log(`⏳ Retrying in ${delay}ms...`);
@@ -29,7 +29,7 @@ export class SimpleDownloader {
         }
       }
     }
-    
+
     throw lastError || new Error('Download failed after all retries');
   }
 
@@ -78,7 +78,7 @@ export class SimpleDownloader {
           if (!downloadCompleted) {
             downloadCompleted = true;
             file.close();
-            
+
             // Verify file was downloaded
             try {
               const stats = fs.statSync(destination);
@@ -149,8 +149,23 @@ export class SimpleDownloader {
    * Get the correct Firebase Storage URL for a plugin
    */
   static getPluginUrl(pluginName: string): string {
-    const bucket = 'cosmic-text-editor.firebasestorage.app';
-    
+    // Get bucket from environment variable or Firebase config
+    let bucket = process.env.VITE_FIREBASE_STORAGE_BUCKET;
+
+    if (!bucket) {
+      try {
+        const { firebaseConfig } = require('../services/firebase-config');
+        bucket = firebaseConfig.storageBucket;
+      } catch (error) {
+        console.error('Failed to get Firebase storage bucket from config:', error);
+        throw new Error('Firebase storage bucket not configured. Please check your .env file.');
+      }
+    }
+
+    if (!bucket) {
+      throw new Error('Firebase storage bucket not found in environment variables or config.');
+    }
+
     // Map plugin names to their correct file names
     const pluginFileMap: { [key: string]: string } = {
       'ai-assistant': 'ai-assistant-1.0.0.zip',
@@ -165,10 +180,10 @@ export class SimpleDownloader {
 
     // Normalize plugin name
     const normalizedName = pluginName.replace(/(-\d+\.\d+\.\d+)$/, '');
-    
+
     // Get the correct file name
-    const fileName = pluginFileMap[pluginName] || 
-                    pluginFileMap[normalizedName] || 
+    const fileName = pluginFileMap[pluginName] ||
+                    pluginFileMap[normalizedName] ||
                     `${normalizedName}.zip`;
 
     // Create the URL

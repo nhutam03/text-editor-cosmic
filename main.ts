@@ -70,7 +70,7 @@ let pluginManager: ExtendedPluginManager;
 const runningProcesses = new Map<string, ChildProcess>();
 const PORT = process.env.VITE_PLUGIN_PORT
   ? parseInt(process.env.VITE_PLUGIN_PORT)
-  : 5001; // Thay đổi từ 5000 thành 5001 để khớp với Firebase emulator và PluginManager default
+  : 5001; // Default fallback only if environment variable is not set
 
 function createWindow() {
   mainWindow = new BrowserWindow({

@@ -1,4 +1,5 @@
 import * as https from 'https';
+import { getAIConfig } from '../utils/env-loader';
 
 export interface AIRequest {
   prompt: string;
@@ -16,10 +17,30 @@ export interface AIResponse {
 export class AIService {
   private static instance: AIService;
   private isAvailable: boolean = false;
-  private readonly GEMINI_API_KEY = 'AIzaSyCMZDAgyMwu8gzZUQ_kSkB7Qdv02NK55To';
+  private readonly GEMINI_API_KEY: string;
+  private readonly GEMINI_MODEL: string;
+  private readonly GEMINI_API_HOSTNAME: string;
 
   private constructor() {
-    this.isAvailable = true; // Direct API call, always available
+    // Load configuration from environment variables only
+    const aiConfig = getAIConfig();
+    this.GEMINI_API_KEY = aiConfig.geminiApiKey || '';
+    this.GEMINI_MODEL = aiConfig.geminiModel || '';
+    this.GEMINI_API_HOSTNAME = aiConfig.geminiApiHostname || '';
+
+    // Check if all required configuration is available
+    this.isAvailable = !!(this.GEMINI_API_KEY && this.GEMINI_MODEL && this.GEMINI_API_HOSTNAME);
+
+    if (!this.isAvailable) {
+      console.error('❌ [AIService] Missing required environment variables. Please check your .env file.');
+      console.error('Required variables: VITE_GEMINI_API_KEY, VITE_GEMINI_MODEL, VITE_GEMINI_API_HOSTNAME');
+    } else {
+      console.log('🤖 [AIService] Initialized successfully with environment configuration:', {
+        model: this.GEMINI_MODEL,
+        hostname: this.GEMINI_API_HOSTNAME,
+        apiKeySet: '✓ Set'
+      });
+    }
   }
 
   public static getInstance(): AIService {
@@ -29,15 +50,15 @@ export class AIService {
     return AIService.instance;
   }
 
+  //API Communication Method
   private async callGeminiAPI(requestData: any): Promise<AIResponse> {
     return new Promise((resolve) => {
-      const model = 'gemini-1.5-flash';
       const postData = JSON.stringify(requestData);
 
       const options = {
-        hostname: 'generativelanguage.googleapis.com',
+        hostname: this.GEMINI_API_HOSTNAME,
         port: 443,
-        path: `/v1beta/models/${model}:generateContent?key=${this.GEMINI_API_KEY}`,
+        path: `/v1beta/models/${this.GEMINI_MODEL}:generateContent?key=${this.GEMINI_API_KEY}`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

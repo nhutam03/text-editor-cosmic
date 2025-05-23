@@ -1,13 +1,14 @@
 // Firebase configuration for the Cosmic Text Editor project
 import { getFirebaseConfig } from '../utils/env-loader';
 
-// Get Firebase configuration from environment variables or use hardcoded values as fallback
-export const firebaseConfig = getFirebaseConfig() || {
-  apiKey: "AIzaSyDNYDfz8wxViPu-9wVb7AzrTtv74EILogc",
-  authDomain: "cosmic-text-editor.firebaseapp.com",
-  projectId: "cosmic-text-editor",
-  storageBucket: "cosmic-text-editor.firebasestorage.app",
-  messagingSenderId: "339146736696",
-  appId: "1:339146736696:web:f9f13e317905a9c8f9d2cd",
-  measurementId: "G-XH2NWVZJBT"
-};
+// Get Firebase configuration from environment variables only
+const config = getFirebaseConfig();
+
+// Validate that all required Firebase configuration is present
+if (!config.apiKey || !config.authDomain || !config.projectId || !config.storageBucket || !config.messagingSenderId || !config.appId) {
+  console.error('❌ [Firebase] Missing required Firebase configuration. Please check your .env file.');
+  console.error('Required variables: VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_STORAGE_BUCKET, VITE_FIREBASE_MESSAGING_SENDER_ID, VITE_FIREBASE_APP_ID');
+  throw new Error('Missing Firebase configuration');
+}
+
+export const firebaseConfig = config;
